@@ -1321,9 +1321,50 @@ pub async fn check_virtual_adapter() -> Result<bool, String> {
         Ok(has_adapter)
     }
     
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
-        // 非 Windows 平台暂不支持
+        // EasyTier 在 macOS 上使用系统分配的 utunN 接口。只把带有 IPv4
+        // 地址的 utun 视为已创建，避免把其它没有地址的系统 utun 误判为
+        // MCTier 已就绪。
+        let output = std::process::Command::new("/sbin/ifconfig")
+            .output()
+            .map_err(|e| format!("执行 ifconfig 失败: {}", e))?;
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let mut in_utun = false;
+        let has_adapter = output_str.lines().any(|line| {
+            if !line.starts_with(' ') && !line.starts_with('\t') {
+                in_utun = line
+                    .split(':')
+                    .next()
+                    .map(|name| name.starts_with("utun"))
+                    .unwrap_or(false);
+            }
+            in_utun && line.trim_start().starts_with("inet ")
+        });
+        log::info!("macOS utun 虚拟网卡检查结果: {}", has_adapter);
+        Ok(has_adapter)
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("ip")
+            .args(["-o", "addr", "show"])
+            .output()
+            .map_err(|e| format!("执行 ip 失败: {}", e))?;
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let has_adapter = output_str.lines().any(|line| {
+            let mut fields = line.split_whitespace();
+            let _index = fields.next();
+            let name = fields.next().unwrap_or_default();
+            name.starts_with("tun") || name.starts_with("tap") || name.starts_with("et-")
+        });
+        log::info!("Linux TUN 虚拟网卡检查结果: {}", has_adapter);
+        Ok(has_adapter)
+    }
+
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    {
+        // 其它平台暂未提供统一的网卡查询接口。
         Ok(true)
     }
 }
@@ -1392,7 +1433,27 @@ pub async fn is_admin() -> bool {
             ok.is_ok() && elevation.TokenIsElevated != 0
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        // macOS 的 TUN 配置需要 root。除了直接以 root 运行外，允许已经
+        // 通过系统授权缓存的 sudo 会话，避免引导页把可用状态误报为失败。
+        if std::process::Command::new("/usr/bin/id")
+            .arg("-u")
+            .output()
+            .ok()
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .map(|uid| uid.trim() == "0")
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        return std::process::Command::new("/usr/bin/sudo")
+            .args(["-n", "-v"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         true
     }
@@ -1506,7 +1567,61 @@ pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String
             Err(e) => Err(format!("以管理员身份重启失败: {}", e)),
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app_handle;
+        // 只缓存一次 sudo 授权，不以 root 重启整个 GUI（否则配置目录和
+        // WebView 的用户权限会变成 root）。真正启动 EasyTier 时由网络服务
+        // 通过 sudo 继承这次授权。
+        use std::process::Stdio;
+        use tokio::io::AsyncWriteExt;
+
+        let prompt_script = r#"
+display dialog "MCTier 需要管理员权限来创建 macOS 虚拟网卡。请输入登录密码以继续。" with title "MCTier 网络授权" default answer "" with hidden answer buttons {"取消", "继续"} default button "继续" cancel button "取消"
+text returned of result
+"#;
+        let prompt = tokio::process::Command::new("/usr/bin/osascript")
+            .args(["-e", prompt_script])
+            .output()
+            .await
+            .map_err(|e| format!("无法打开 macOS 管理员授权对话框：{}", e))?;
+        if !prompt.status.success() {
+            return Err("已取消 macOS 管理员授权".to_string());
+        }
+        let password = String::from_utf8(prompt.stdout)
+            .map_err(|_| "macOS 管理员密码格式无效".to_string())?
+            .trim_end_matches(&['\r', '\n'][..])
+            .to_string();
+        if password.is_empty() {
+            return Err("未输入 macOS 管理员密码".to_string());
+        }
+
+        let mut sudo = tokio::process::Command::new("/usr/bin/sudo");
+        sudo.args(["-S", "-p", "", "-v"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        let mut child = sudo
+            .spawn()
+            .map_err(|e| format!("启动 macOS 授权失败：{}", e))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(format!("{}\n", password).as_bytes())
+                .await
+                .map_err(|e| format!("发送 macOS 管理员授权失败：{}", e))?;
+        }
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|e| format!("等待 macOS 管理员授权失败：{}", e))?;
+        if output.status.success() {
+            log::info!("macOS sudo 授权已缓存，后续 EasyTier 启动将使用该授权");
+            Ok(())
+        } else {
+            Err("macOS 管理员密码不正确或当前账户没有管理员权限".to_string())
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = app_handle;
         Err("当前平台不支持".to_string())

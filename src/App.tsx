@@ -33,6 +33,7 @@ import './App.css';
 
 function App() {
   const { i18n } = useTranslation();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const appState = useAppStore((state) => state.appState);
   const lobby = useAppStore((state) => state.lobby);
   const setMicEnabled = useAppStore((state) => state.setMicEnabled);
@@ -760,7 +761,9 @@ function App() {
             footer={
               <div className="microphone-permission-actions">
                 <Button onClick={() => void invoke('open_microphone_privacy_settings')}>
-                  {tl('打开 Windows 麦克风设置', 'Open Windows microphone settings')}
+                  {isMacOS
+                    ? tl('打开 macOS 麦克风设置', 'Open macOS microphone settings')
+                    : tl('打开 Windows 麦克风设置', 'Open Windows microphone settings')}
                 </Button>
                 <Button type="primary" onClick={() => void invoke('reset_microphone_permission')}>
                   {tl('一键重置并重启', 'Reset and restart')}
@@ -771,12 +774,20 @@ function App() {
             width={460}
           >
             <p>{tl(
-              '如果首次申请时选择了拒绝，WebView2 可能不会再次弹出授权窗口。可先检查 Windows 麦克风隐私设置；仍无法授权时，点击“一键重置并重启”，MCTier 会清理自身的 EBWebView 权限缓存并重新申请。',
-              'If access was denied the first time, WebView2 may not show the prompt again. Check Windows microphone privacy settings first. If that does not help, reset and restart MCTier to clear its EBWebView permission cache and request access again.'
+              isMacOS
+                ? '如果首次申请时选择了拒绝，macOS 可能不会再次弹出授权窗口。请先检查系统设置中的麦克风权限；仍无法授权时，点击“一键重置并重启”，MCTier 会清理自身的 WebView 权限缓存并重新申请。'
+                : '如果首次申请时选择了拒绝，WebView2 可能不会再次弹出授权窗口。可先检查 Windows 麦克风隐私设置；仍无法授权时，点击“一键重置并重启”，MCTier 会清理自身的 EBWebView 权限缓存并重新申请。',
+              isMacOS
+                ? 'If access was denied the first time, macOS may not show the prompt again. Check microphone access in System Settings first. If that does not help, reset and restart MCTier to clear its WebView permission cache and request access again.'
+                : 'If access was denied the first time, WebView2 may not show the prompt again. Check Windows microphone privacy settings first. If that does not help, reset and restart MCTier to clear its EBWebView permission cache and request access again.'
             )}</p>
             <p style={{ opacity: 0.68, marginBottom: 0 }}>{tl(
-              '重置只会清理 MCTier 的 WebView2 浏览数据，不会删除大厅配置。',
-              'The reset only clears MCTier WebView2 browsing data. Lobby settings are preserved.'
+              isMacOS
+                ? '重置只会清理 MCTier 的 WebView 浏览数据，不会删除大厅配置。'
+                : '重置只会清理 MCTier 的 WebView2 浏览数据，不会删除大厅配置。',
+              isMacOS
+                ? 'The reset only clears MCTier WebView browsing data. Lobby settings are preserved.'
+                : 'The reset only clears MCTier WebView2 browsing data. Lobby settings are preserved.'
             )}</p>
           </Modal>
         </AntdApp>

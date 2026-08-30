@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
+#[cfg(target_os = "macos")]
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -48,8 +50,21 @@ fn is_elevated() -> bool {
     }
 }
 
-/// 非 Windows 平台始终返回 true（不需要管理员权限）
+/// macOS 创建并配置 utun 设备需要 root 权限。
+#[cfg(target_os = "macos")]
+fn is_elevated() -> bool {
+    std::process::Command::new("/usr/bin/id")
+        .arg("-u")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|uid| uid.trim() == "0")
+        .unwrap_or(false)
+}
+
+/// 其它非 Windows 平台目前不需要桌面端额外的管理员检查。
 #[cfg(not(windows))]
+#[cfg(not(target_os = "macos"))]
 fn is_elevated() -> bool {
     true
 }
@@ -162,6 +177,108 @@ impl NetworkService {
             // 如果没有 app_handle，使用配置中的路径
             Ok(self.config.easytier_path.clone())
         }
+    }
+
+    /// 在桌面平台启动 EasyTier。
+    ///
+    /// macOS 的 utun 接口及其路由配置需要 root 权限。普通 `.app` 进程没有
+    /// 终端可供 `sudo` 询问密码，因此使用系统原生的 AppleScript 对话框收集
+    /// 一次密码，再通过 `sudo -S` 启动 EasyTier。密码只存在于本次调用的内存
+    /// 中，不写入日志或配置文件。
+    async fn spawn_easytier_process(mut cmd: Command) -> Result<Child, AppError> {
+        #[cfg(target_os = "macos")]
+        {
+            if !is_elevated() {
+                // 引导页可能已经缓存了 sudo 授权；先无交互检查，避免每次
+                // 创建大厅都重复弹出密码对话框。
+                let sudo_authorized = tokio::process::Command::new("/usr/bin/sudo")
+                    .args(["-n", "-v"])
+                    .status()
+                    .await
+                    .map(|status| status.success())
+                    .unwrap_or(false);
+                let password = if sudo_authorized {
+                    String::new()
+                } else {
+                    let prompt_script = r#"
+display dialog "MCTier 需要管理员权限来创建 macOS 虚拟网卡。请输入登录密码以继续。" with title "MCTier 网络授权" default answer "" with hidden answer buttons {"取消", "继续"} default button "继续" cancel button "取消"
+text returned of result
+"#;
+                    let prompt = tokio::process::Command::new("/usr/bin/osascript")
+                        .args(["-e", prompt_script])
+                        .output()
+                        .await
+                        .map_err(|e| {
+                            AppError::ProcessError(format!(
+                                "无法打开 macOS 管理员授权对话框：{}",
+                                e
+                            ))
+                        })?;
+
+                    if !prompt.status.success() {
+                        return Err(AppError::ProcessError(
+                            "已取消 macOS 管理员授权，无法创建虚拟网卡".to_string(),
+                        ));
+                    }
+
+                    let password = String::from_utf8(prompt.stdout)
+                        .map_err(|_| AppError::ProcessError("macOS 管理员密码格式无效".to_string()))?
+                        .trim_end_matches(&['\r', '\n'][..])
+                        .to_string();
+                    if password.is_empty() {
+                        return Err(AppError::ProcessError(
+                            "未输入 macOS 管理员密码，无法创建虚拟网卡".to_string(),
+                        ));
+                    }
+                    password
+                };
+
+                // 复制原命令的程序、参数和工作目录；macOS 分支没有额外环境变量，
+                // 因此不把 sudo 的受限环境之外的变量带入特权进程。
+                let program = cmd.as_std().get_program().to_os_string();
+                let args: Vec<_> = cmd
+                    .as_std()
+                    .get_args()
+                    .map(|arg| arg.to_os_string())
+                    .collect();
+                let current_dir = cmd.as_std().get_current_dir().map(PathBuf::from);
+
+                let mut elevated = Command::new("/usr/bin/sudo");
+                elevated
+                    .arg("-S")
+                    .arg("-p")
+                    .arg("")
+                    .arg("--")
+                    .arg(program)
+                    .args(args)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .kill_on_drop(true);
+                if let Some(dir) = current_dir {
+                    elevated.current_dir(dir);
+                }
+
+                let mut child = elevated.spawn().map_err(|e| {
+                    AppError::ProcessError(format!("以管理员权限启动 EasyTier 失败：{}", e))
+                })?;
+                if let Some(mut stdin) = child.stdin.take() {
+                    if !password.is_empty() {
+                        stdin
+                            .write_all(format!("{}\n", password).as_bytes())
+                            .await
+                            .map_err(|e| {
+                                AppError::ProcessError(format!("发送 macOS 管理员授权失败：{}", e))
+                            })?;
+                    }
+                }
+                return Ok(child);
+            }
+        }
+
+        cmd.spawn().map_err(|e| {
+            AppError::ProcessError(format!("启动 EasyTier 进程失败: {}", e))
+        })
     }
 
     /// 应用 EasyTier 高级配置到命令行
@@ -302,6 +419,15 @@ impl NetworkService {
             log::info!("  ✅ 绑定到物理设备");
         }
         
+        // macOS 的 utun 驱动只接受系统分配的 `utunN` 接口名。EasyTier
+        // 在 macOS 上会自动选择空闲接口，传入 Windows 风格的
+        // `MCTier_Net` 会直接导致 TUN 创建失败，因此始终让系统分配。
+        #[cfg(target_os = "macos")]
+        if config.dev_name.as_deref().is_some_and(|name| !name.is_empty()) {
+            log::info!("  ℹ️ macOS 忽略自定义 TUN 设备名称，使用系统分配的 utunN");
+        }
+
+        #[cfg(not(target_os = "macos"))]
         if let Some(ref dev_name) = config.dev_name {
             if !dev_name.is_empty() {
                 cmd.arg("--dev-name").arg(dev_name);
@@ -868,6 +994,9 @@ impl NetworkService {
         
         log::info!("使用 DHCP + TUN 模式，创建虚拟网卡以支持完整的网络功能");
         log::info!("虚拟IP由DHCP服务器自动分配");
+        #[cfg(target_os = "macos")]
+        log::info!("macOS 使用系统自动分配的 utunN 虚拟网卡名称");
+        #[cfg(not(target_os = "macos"))]
         log::info!("虚拟网卡名称: MCTier_Net（固定名称，方便识别和管理）");
         log::info!("使用单节点模式连接到: {}", server_node);
         log::info!("启用低延迟优先模式以降低延迟");
@@ -884,10 +1013,11 @@ impl NetworkService {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
-        // 启动子进程
-        let mut child = cmd.spawn().map_err(|e| {
+        // 启动子进程；macOS 普通 `.app` 会在这里弹出系统密码对话框，
+        // 通过 sudo 以 root 身份创建 utun 与路由。
+        let mut child = Self::spawn_easytier_process(cmd).await.map_err(|e| {
             log::error!("启动 EasyTier 进程失败: {}", e);
-            AppError::ProcessError(format!("启动 EasyTier 进程失败: {}", e))
+            e
         })?;
 
         // 获取标准输出和标准错误
@@ -1145,6 +1275,19 @@ impl NetworkService {
         // 非 Windows 平台不做处理
     }
 
+    /// 根据平台返回可执行的 TUN 故障处理建议。
+    fn virtual_nic_error_message() -> String {
+        #[cfg(windows)]
+        {
+            return "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            return "虚拟网卡创建失败：macOS 需要管理员授权来创建 utun 接口。请在系统密码对话框中授权，并确认未启用会独占 VPN 的网络过滤器；若仍失败，请重启 MCTier 后重试".to_string();
+        }
+        "虚拟网卡创建失败：请确认当前系统支持 TUN，并授予 MCTier 所需的网络权限后重试".to_string()
+    }
+
     /// 根据进程退出码推断常见失败原因，返回更可读的错误说明
     ///
     /// 主要覆盖 Windows 下的几个高频致命退出码。
@@ -1162,7 +1305,7 @@ impl NetworkService {
         if recent_stderr.iter().any(|l| {
             l.contains("tun device error") || l.contains("Failed to create adapter")
         }) {
-            return "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string();
+            return Self::virtual_nic_error_message();
         }
 
         // 端口绑定被拒绝（os error 10013 / WSAEACCES）——常见于二次使用时上一个
@@ -1238,7 +1381,11 @@ impl NetworkService {
         if let Some(hint) = stderr_hint {
             return format!("EasyTier 进程意外终止：{}", hint);
         }
-        "EasyTier 进程意外终止：可能被安全软件拦截、虚拟网卡创建失败或缺少运行库，请尝试以管理员身份运行并将本软件加入杀毒软件白名单".to_string()
+        #[cfg(target_os = "macos")]
+        {
+            return "EasyTier 进程意外终止：可能是 macOS 管理员授权被取消、虚拟网卡创建失败或网络过滤器拦截，请重新连接并在提示中授权".to_string();
+        }
+        "EasyTier 进程意外终止：可能被安全软件拦截、虚拟网卡创建失败或缺少运行库，请尝试以管理员身份运行并将本软件加入安全软件白名单".to_string()
     }
 
     /// 监控标准输出，解析虚拟 IP
@@ -1295,9 +1442,7 @@ impl NetworkService {
             if line.contains("tun device error") || line.contains("Failed to create adapter") {
                 log::error!("检测到虚拟网卡创建失败: {}", line);
                 *is_running.lock().await = false;
-                *status.lock().await = ConnectionStatus::Error(
-                    "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string(),
-                );
+                *status.lock().await = ConnectionStatus::Error(Self::virtual_nic_error_message());
                 continue;
             }
 
@@ -1393,11 +1538,9 @@ impl NetworkService {
                 
                 // 检查是否是 TUN 设备创建失败
                 if line.contains("tun device error") || line.contains("Failed to create adapter") {
-                    log::error!("TUN 设备创建失败，可能是缺少 WinTun 驱动或权限不足");
+                    log::error!("TUN 设备创建失败，可能是缺少平台驱动、权限不足或被系统网络过滤器拦截");
                     *is_running.lock().await = false;
-                    *status.lock().await = ConnectionStatus::Error(
-                        "虚拟网卡创建失败：请以管理员身份运行，并确认 WinTun 驱动正常、未被安全软件拦截".to_string()
-                    );
+                    *status.lock().await = ConnectionStatus::Error(Self::virtual_nic_error_message());
                 }
             }
         }

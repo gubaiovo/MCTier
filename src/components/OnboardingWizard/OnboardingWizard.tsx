@@ -56,6 +56,7 @@ interface EnvChecks {
 
 export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ visible, onClose }) => {
   useTranslation();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [step, setStep] = useState(0);
   const [checks, setChecks] = useState<EnvChecks>({
     admin: 'idle',
@@ -116,6 +117,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ visible, onC
   const handleRestartAdmin = async () => {
     try {
       await invoke('restart_as_admin');
+      message.success(
+        isMacOS
+          ? tl('macOS 管理员授权已缓存，下一次连接会创建 utun 网卡', 'macOS administrator authorization cached; the next connection can create the utun adapter')
+          : tl('已请求以管理员身份重启', 'Administrator restart requested'),
+      );
+      await runChecks();
     } catch (error) {
       message.error(`${tl('以管理员身份重启失败：', 'Failed to restart as administrator: ')}${error}`);
     }
@@ -168,7 +175,9 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ visible, onC
       <Alert
         type="info"
         showIcon
-        message={tl('建议以管理员身份运行 MCTier，可显著降低组网失败概率。', 'Running MCTier as administrator greatly reduces networking failures.')}
+        message={isMacOS
+          ? tl('macOS 创建 utun 虚拟网卡需要一次管理员授权。', 'macOS requires one administrator authorization to create the utun virtual adapter.')
+          : tl('建议以管理员身份运行 MCTier，可显著降低组网失败概率。', 'Running MCTier as administrator greatly reduces networking failures.')}
       />
     </div>
   );
@@ -186,8 +195,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ visible, onC
         tl('管理员权限', 'Administrator'),
         checks.admin,
         checks.admin === 'ok'
-          ? tl('已以管理员身份运行，网络配置权限充足。', 'Running as administrator with sufficient network permissions.')
-          : tl('当前非管理员身份，创建虚拟网卡/写入 hosts 可能失败，建议以管理员重启。', 'Not running as administrator; creating the virtual adapter or writing hosts may fail. Restart as administrator.')
+          ? (isMacOS
+            ? tl('macOS 管理员授权已准备好，连接时可创建 utun。', 'macOS administrator authorization is ready; utun can be created when connecting.')
+            : tl('已以管理员身份运行，网络配置权限充足。', 'Running as administrator with sufficient network permissions.'))
+          : (isMacOS
+            ? tl('尚未获得 macOS 管理员授权，创建 utun 时会需要密码。', 'macOS administrator authorization is not cached; a password is required when creating utun.')
+            : tl('当前非管理员身份，创建虚拟网卡/写入 hosts 可能失败，建议以管理员重启。', 'Not running as administrator; creating the virtual adapter or writing hosts may fail. Restart as administrator.'))
       )}
       {checkRow(
         <SafetyCertificateOutlined />,
@@ -220,7 +233,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ visible, onC
         )}
         {checks.admin !== 'ok' && (
           <Button danger disabled={allChecking} onClick={() => void handleRestartAdmin()}>
-            {tl('以管理员身份重启', 'Restart as admin')}
+            {isMacOS ? tl('授权网络权限', 'Authorize network access') : tl('以管理员身份重启', 'Restart as admin')}
           </Button>
         )}
       </Space>

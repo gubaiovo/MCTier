@@ -27,6 +27,7 @@ export const NetworkDiagnostic: React.FC<NetworkDiagnosticProps> = ({
   virtualIp,
 }) => {
   useTranslation();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [isChecking, setIsChecking] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -50,6 +51,10 @@ export const NetworkDiagnostic: React.FC<NetworkDiagnosticProps> = ({
   const handleRestartAdmin = async () => {
     try {
       await invoke('restart_as_admin');
+      message.success(isMacOS
+        ? tl('macOS 管理员授权已缓存，请重新连接', 'macOS administrator authorization cached; reconnect to continue')
+        : tl('已请求以管理员身份重启', 'Administrator restart requested'));
+      await runDiagnostic();
     } catch (error) {
       message.error(`${tl('以管理员身份重启失败', 'Failed to restart as administrator')}：${error}`);
     }
@@ -86,14 +91,18 @@ export const NetworkDiagnostic: React.FC<NetworkDiagnosticProps> = ({
         message: hasVirtualAdapter ? tl('✓ 虚拟网卡已创建', '✓ Virtual adapter created') : tl('✗ 虚拟网卡未找到', '✗ Virtual adapter not found'),
         solution: hasVirtualAdapter
           ? undefined
-          : tl('请检查 WinTun 驱动是否正常安装,或尝试重启软件', 'Please check whether the WinTun driver is installed correctly, or try restarting the app'),
+          : (isMacOS
+            ? tl('请先授权 macOS 管理员权限，然后重新连接以创建 utun 网卡', 'Authorize macOS administrator access, then reconnect to create the utun adapter')
+            : tl('请检查 WinTun 驱动是否正常安装,或尝试重启软件', 'Please check whether the WinTun driver is installed correctly, or try restarting the app')),
       };
     } catch {
       checks[0] = {
         name: tl('虚拟网卡检查', 'Virtual Adapter Check'),
         status: 'error',
         message: tl('✗ 检查失败', '✗ Check failed'),
-        solution: tl('无法检查虚拟网卡状态，请重启软件后重试', 'Unable to check the virtual adapter, please restart the app and retry'),
+        solution: isMacOS
+          ? tl('无法读取 utun 状态，请先授权管理员权限后重试', 'Unable to read utun status; authorize administrator access and retry')
+          : tl('无法检查虚拟网卡状态，请重启软件后重试', 'Unable to check the virtual adapter, please restart the app and retry'),
       };
     }
     setResults([...checks]);
@@ -237,7 +246,7 @@ export const NetworkDiagnostic: React.FC<NetworkDiagnosticProps> = ({
         ...(!isAdmin
           ? [
               <Button key="admin" danger onClick={() => void handleRestartAdmin()}>
-                {tl('以管理员身份重启', 'Restart as Admin')}
+                {isMacOS ? tl('授权网络权限', 'Authorize network access') : tl('以管理员身份重启', 'Restart as Admin')}
               </Button>,
             ]
           : []),

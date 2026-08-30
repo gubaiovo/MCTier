@@ -322,8 +322,13 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const { i18n } = useTranslation();
   const { message } = AntdApp.useApp();
   const { setAppState, setLobby, config } = useAppStore();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [form] = Form.useForm<LobbyFormValues>();
   const [loading, setLoading] = useState(false);
+  // 不使用 Ant Design 的 Input.Password 内置切换器：Tauri 的 WKWebView 在
+  // 初始 `type=password` 状态下偶发无法把键盘焦点交给输入框，点击眼睛后
+  // 才恢复。显式控制 input type 可以保持密码默认隐藏，同时确保首次点击即可输入。
+  const [showPassword, setShowPassword] = useState(false);
   const preferredServerSaveGeneration = useRef(0);
   const [showCustomServer, setShowCustomServer] = useState(config.preferredServer === 'custom');
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
@@ -956,7 +961,10 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         errorMessage.includes('权限') ||
         errorMessage.includes('permission') ||
         errorMessage.includes('administrator') ||
-        errorMessage.includes('740'); // Windows 错误代码 740 表示需要提升权限
+        errorMessage.includes('740') || // Windows 错误代码 740 表示需要提升权限
+        errorMessage.includes('macOS') ||
+        errorMessage.includes('utun') ||
+        errorMessage.includes('虚拟网卡创建失败');
       
       // 检查是否是版本过低错误
       const isVersionError = 
@@ -971,7 +979,9 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
           content: (
             <div>
               <p style={{ marginBottom: '12px' }}>
-                {tl('MCTier 需要管理员权限来创建虚拟网卡。', 'MCTier needs administrator rights to create the virtual adapter.')}
+                {isMacOS
+                  ? tl('macOS 需要管理员授权来创建 utun 虚拟网卡。点击重试时会弹出系统密码对话框。', 'macOS requires administrator authorization to create the utun virtual adapter. A system password dialog will appear when you retry.')
+                  : tl('MCTier 需要管理员权限来创建虚拟网卡。', 'MCTier needs administrator rights to create the virtual adapter.')}
               </p>
             </div>
           ),
@@ -1016,7 +1026,9 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
           const guidance = (
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', lineHeight: '1.7', marginTop: '8px' }}>
               {tl('当前节点连接失败，可点击下方按钮换一个节点重试，或：', 'This node failed to connect. Click a button below to try another node, or:')}<br />
-              {tl('1. 以管理员身份运行 MCTier', '1. Run MCTier as administrator')}<br />
+              {isMacOS
+                ? tl('1. 在 macOS 密码对话框中授权创建 utun 虚拟网卡', '1. Authorize utun creation in the macOS password dialog')
+                : tl('1. 以管理员身份运行 MCTier', '1. Run MCTier as administrator')}<br />
               {tl('2. 将 MCTier 加入杀毒软件 / 防火墙白名单', '2. Add MCTier to your antivirus / firewall whitelist')}<br />
               {tl('3. 改用家庭 WiFi，避免校园网、手机流量或热点', '3. Use home WiFi; avoid campus networks, mobile data or hotspots')}
             </div>
@@ -1070,7 +1082,9 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 </div>
                 <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', lineHeight: '1.7' }}>
                   {tl('可尝试：', 'You can try:')}<br />
-                  {tl('1. 以管理员身份运行 MCTier（创建虚拟网卡需要管理员权限）', '1. Run MCTier as administrator (creating the virtual adapter needs admin rights)')}<br />
+                  {isMacOS
+                    ? tl('1. 在 macOS 密码对话框中授权创建 utun 虚拟网卡', '1. Authorize utun creation in the macOS password dialog')
+                    : tl('1. 以管理员身份运行 MCTier（创建虚拟网卡需要管理员权限）', '1. Run MCTier as administrator (creating the virtual adapter needs admin rights)')}<br />
                   {tl('2. 将 MCTier 加入杀毒软件 / 防火墙白名单后重试', '2. Add MCTier to your antivirus / firewall whitelist and retry')}<br />
                   {tl('3. 检查私有服务器 / 自定义节点地址是否正确、可达', '3. Check that the private server / custom node address is correct and reachable')}<br />
                   {tl('4. 改用家庭 WiFi，避免校园网、手机热点等受限网络', '4. Use home WiFi; avoid restricted networks like campus networks or hotspots')}
@@ -1294,12 +1308,28 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 },
               ]}
             >
-              <Input.Password
+              <Input
+                className="lobby-password-input"
+                type={showPassword ? 'text' : 'password'}
                 placeholder={tl('输入密码（至少8个字符，包含字母和数字）', 'Password (min 8 chars, letters and digits)')}
                 size="large"
                 disabled={loading}
                 autoComplete="new-password"
                 spellCheck={false}
+                suffix={(
+                  <button
+                    type="button"
+                    className="password-visibility-button"
+                    aria-label={showPassword ? tl('隐藏密码', 'Hide password') : tl('显示密码', 'Show password')}
+                    aria-pressed={showPassword}
+                    disabled={loading}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => setShowPassword((visible) => !visible)}
+                  >
+                    {showPassword ? tl('隐藏', 'Hide') : tl('显示', 'Show')}
+                  </button>
+                )}
               />
             </Form.Item>
 

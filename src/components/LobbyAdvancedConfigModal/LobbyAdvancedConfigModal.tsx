@@ -19,6 +19,7 @@ export const LobbyAdvancedConfigModal: React.FC<LobbyAdvancedConfigModalProps> =
   onSaved,
 }) => {
   useTranslation();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,6 +50,10 @@ export const LobbyAdvancedConfigModal: React.FC<LobbyAdvancedConfigModalProps> =
     try {
       const values = form.getFieldsValue(true);
       values.use_global_config = useGlobalConfig;
+      if (isMacOS) {
+        // macOS 的 utun 名称由系统分配，不能保存 Windows 的固定网卡名。
+        values.dev_name = undefined;
+      }
       
       console.log('保存大厅高级配置:', values);
       
@@ -182,8 +187,14 @@ export const LobbyAdvancedConfigModal: React.FC<LobbyAdvancedConfigModalProps> =
                   <Form.Item name="bind_device" label={tl('绑定物理设备', 'Bind Physical Device')} valuePropName="checked">
                     <Switch />
                   </Form.Item>
-                  <Form.Item name="dev_name" label={tl('TUN 设备名称', 'TUN Device Name')}>
-                    <Input placeholder="MCTier_Net" />
+                  <Form.Item
+                    name="dev_name"
+                    label={tl('TUN 设备名称', 'TUN Device Name')}
+                    tooltip={isMacOS
+                      ? tl('macOS 使用系统自动分配的 utunN，不能指定固定名称。', 'macOS assigns the utunN name automatically; a fixed name is not supported.')
+                      : undefined}
+                  >
+                    <Input disabled={isMacOS} placeholder={isMacOS ? '系统自动分配 utunN' : 'MCTier_Net'} />
                   </Form.Item>
                   <Form.Item name="mtu" label={tl('MTU 大小', 'MTU Size')}>
                     <InputNumber min={1280} max={1500} placeholder="1380" style={{ width: '100%' }} />

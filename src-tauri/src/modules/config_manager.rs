@@ -246,6 +246,11 @@ impl Default for EasyTierAdvancedConfig {
             
             // 网络设备
             bind_device: false,
+            // Windows 的 WinTun 支持固定友好名称；macOS 的 utun 驱动只允许
+            // 系统分配 `utunN`，不能使用 MCTier_Net 这类名称。
+            #[cfg(target_os = "macos")]
+            dev_name: None,
+            #[cfg(not(target_os = "macos"))]
             dev_name: Some("MCTier_Net".to_string()),
             mtu: None,
             

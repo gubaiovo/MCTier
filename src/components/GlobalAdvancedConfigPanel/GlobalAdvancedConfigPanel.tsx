@@ -9,6 +9,7 @@ const { Panel } = Collapse;
 
 export const GlobalAdvancedConfigPanel: React.FC = () => {
   useTranslation();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +34,10 @@ export const GlobalAdvancedConfigPanel: React.FC = () => {
   const handleSave = async () => {
     try {
       const values = form.getFieldsValue(true);
+      if (isMacOS) {
+        // macOS 的 utun 名称由系统分配，不能持久化 Windows 的 MCTier_Net。
+        values.dev_name = undefined;
+      }
       console.log('保存全局高级配置:', values);
       
       await invoke('save_global_easytier_advanced_config', { configJson: values });
@@ -295,8 +300,14 @@ export const GlobalAdvancedConfigPanel: React.FC = () => {
             <Form.Item name="bind_device" label={tl('绑定物理设备', 'Bind Physical Device')} valuePropName="checked" tooltip={tl('绑定到物理网卡，避免路由问题', 'Bind to the physical adapter to avoid routing issues')}>
               <Switch />
             </Form.Item>
-            <Form.Item name="dev_name" label={tl('TUN 设备名称', 'TUN Device Name')}>
-              <Input placeholder="MCTier_Net" />
+            <Form.Item
+              name="dev_name"
+              label={tl('TUN 设备名称', 'TUN Device Name')}
+              tooltip={isMacOS
+                ? tl('macOS 使用系统自动分配的 utunN，不能指定固定名称。', 'macOS assigns the utunN name automatically; a fixed name is not supported.')
+                : undefined}
+            >
+              <Input disabled={isMacOS} placeholder={isMacOS ? '系统自动分配 utunN' : 'MCTier_Net'} />
             </Form.Item>
             <Form.Item name="mtu" label={tl('MTU 大小', 'MTU Size')}>
               <InputNumber min={1280} max={1500} placeholder="1380" style={{ width: '100%' }} />

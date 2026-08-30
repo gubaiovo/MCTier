@@ -29,6 +29,7 @@ export const LobbySettingsModal: React.FC<LobbySettingsModalProps> = ({
   onSettingsSaved,
 }) => {
   useTranslation();
+  const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -149,9 +150,18 @@ export const LobbySettingsModal: React.FC<LobbySettingsModalProps> = ({
           // 处理端口转发规则
           port_forward_rules: values.port_forward_rules || [],
         };
+        if (isMacOS) {
+          // macOS 的 utun 名称由系统分配，不能保存 Windows 的固定网卡名。
+          configToSave.dev_name = undefined;
+        }
         console.log('📝 [LobbySettings] 将保存表单配置到大厅配置:', JSON.stringify(configToSave, null, 2));
         console.log('📝 [LobbySettings] use_global_config 字段值:', configToSave.use_global_config);
         console.log('📝 [LobbySettings] dev_name 字段值:', configToSave.dev_name);
+      }
+
+      if (isMacOS) {
+        // 全局配置分支也要清理历史版本写入的 MCTier_Net。
+        configToSave.dev_name = undefined;
       }
       
       setSaving(true);
@@ -534,8 +544,14 @@ export const LobbySettingsModal: React.FC<LobbySettingsModalProps> = ({
               <Form.Item name="bind_device" label={tl("绑定物理设备", "Bind physical device")} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="dev_name" label={tl('TUN 设备名称', 'TUN device name')}>
-                <Input placeholder="MCTier_Net" />
+              <Form.Item
+                name="dev_name"
+                label={tl('TUN 设备名称', 'TUN device name')}
+                tooltip={isMacOS
+                  ? tl('macOS 使用系统自动分配的 utunN，不能指定固定名称。', 'macOS assigns the utunN name automatically; a fixed name is not supported.')
+                  : undefined}
+              >
+                <Input disabled={isMacOS} placeholder={isMacOS ? '系统自动分配 utunN' : 'MCTier_Net'} />
               </Form.Item>
               <Form.Item name="mtu" label={tl('MTU 大小', 'MTU size')}>
                 <InputNumber min={1280} max={1500} placeholder="1380" style={{ width: '100%' }} />
