@@ -465,8 +465,12 @@ class MctierRepository(private val context: Context) {
         scope.launch {
             _state.update { it.copy(state = AppConnectionState.Connecting, error = null) }
             runCatching {
+                // 与桌面端共用同一套规范化凭据，避免尾部空格让 EasyTier
+                // 和信令服务把视觉上相同的名称/密码拆成不同大厅。
+                val normalizedLobbyName = lobbyName.trim()
+                val normalizedPassword = password.trim()
                 val session = networkController.startEasyTier(
-                    lobbyName.trim(), password, settings.playerName, effectiveNode,
+                    normalizedLobbyName, normalizedPassword, settings.playerName, effectiveNode,
                     mtu = settings.mtu.takeIf { it in 500..1500 } ?: 1420,
                     latencyFirst = settings.latencyFirst,
                     proxyCidrs = settings.proxyCidrs.split('\n', ',').map { it.trim() }.filter { it.isNotBlank() },
@@ -485,8 +489,8 @@ class MctierRepository(private val context: Context) {
                 )
                 val lobby = Lobby(
                     id = UUID.randomUUID().toString(),
-                    name = lobbyName.trim(),
-                    password = password,
+                    name = normalizedLobbyName,
+                    password = normalizedPassword,
                     createdAt = System.currentTimeMillis(),
                     virtualIp = session.virtualIp,
                     virtualDomain = settings.virtualDomain.ifBlank { "${settings.playerName}.mct.net" },
@@ -1450,14 +1454,26 @@ class MctierRepository(private val context: Context) {
                 refreshRemoteSharesByHttp()
                 signalingClient.send(SignalingEnvelope(type = "screen-share-list-request", from = _state.value.playerId))
             }
+            "register-error" -> {
+                val detail = (message.message ?: message.error ?: message.reason)?.takeIf { it.isNotBlank() }
+                    ?: L("大厅名称或密码不匹配", "The lobby name or password does not match")
+                // 与桌面端一致：WebSocket 打开不代表注册成功。服务端拒绝后
+                // 退出 EasyTier 网络，避免停留在一个看似成功的空大厅。
+                leaveLobby()
+                _state.update {
+                    it.copy(
+                        state = AppConnectionState.Error,
+                        error = L("加入大厅同步失败：$detail", "Lobby synchronization failed: $detail"),
+                    )
+                }
+            }
             "players-list" -> {
                 val selfId = _state.value.playerId
-                val selfIp = _state.value.lobby?.virtualIp
+                // 信令 playerId 是成员身份的唯一依据。虚拟 IP 在 TUN/DHCP
+                // 收敛前可能为空或暂时重复，不能用于把真实成员从列表中过滤掉。
                 val remotes = message.players.orEmpty().map {
                     Player(it.playerId, it.playerName, it.virtualIp, it.virtualDomain, it.useDomain ?: false)
-                }.filter { player ->
-                    player.id != selfId && (selfIp.isNullOrBlank() || player.virtualIp.isNullOrBlank() || player.virtualIp != selfIp)
-                }
+                }.filter { player -> player.id != selfId }
                 playersSnapshotVersion += 1
                 remotes.forEach { pendingPlayerLeaveJobs.remove(it.id)?.cancel() }
                 // 【幽灵玩家清理】players-list 是服务器在持有大厅读锁时构建的权威全量列表（不含自己），
@@ -1496,8 +1512,7 @@ class MctierRepository(private val context: Context) {
             }
             "player-joined" -> {
                 val id = message.playerId ?: return
-                val selfIp = _state.value.lobby?.virtualIp
-                if (id == _state.value.playerId || (!selfIp.isNullOrBlank() && message.virtualIp == selfIp)) return
+                if (id == _state.value.playerId) return
                 val alreadyKnown = _state.value.players.any { it.id == id }
                 pendingPlayerLeaveJobs.remove(id)?.cancel()
                 val name = message.playerName ?: L("未知玩家", "Unknown player")

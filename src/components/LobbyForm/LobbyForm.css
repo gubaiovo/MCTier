@@ -11,11 +11,22 @@
   -webkit-user-select: none;
 }
 
-/* 滚动区域必须显式 no-drag。
-   .lobby-form-container 带 data-tauri-drag-region，而 Chromium 的 app-region 按几何矩形
-   命中：父级为 drag 时，子元素的默认值不会自动“打洞”，未显式声明 no-drag 的区域会吞掉
-   鼠标事件（含滚轮）。这会导致光标停在卡片空白处或“重要提示”框上时滚轮失效（issue #41）。
-   窗口拖拽仍由容器上未被卡片覆盖的边缘区域提供。 */
+.lobby-form-drag-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  z-index: 5;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* 滚动卡片始终保持 no-drag；窗口拖动由顶部独立拖动条处理，
+   避免拖动命中区域吞掉密码输入、按钮和滚轮事件。 */
 .lobby-form-card,
 .lobby-form-card * {
   -webkit-app-region: no-drag;
@@ -343,29 +354,40 @@
 }
 
 /*
- * 密码框使用显式 type 切换，而不是 Input.Password 的内部实现。
- * WKWebView 在 macOS 上对后者的初始 password 控件偶发无法获取焦点；
- * 这个样式保持相同的视觉效果，并让输入框本身始终是可交互区域。
+ * 密码框始终使用 type=text，隐藏态由 text-security 实现。
+ * 这样不会触发 WKWebView 原生 secure field 的首次聚焦异常。
  */
-.lobby-form .lobby-password-input.ant-input-affix-wrapper {
+.lobby-password-control {
+  position: relative;
+  width: 100%;
   border-radius: 8px !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   height: 40px !important;
-  padding: 0 8px 0 0 !important;
   background: rgba(255, 255, 255, 0.05) !important;
   display: flex !important;
   align-items: center !important;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+  transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
 }
 
-.lobby-form .lobby-password-input.ant-input-affix-wrapper > input.ant-input {
+.lobby-password-native {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   height: 100% !important;
-  padding: 4px 11px !important;
+  padding: 4px 40px 4px 11px !important;
   border: none !important;
   background: transparent !important;
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  font: inherit;
+  font-size: 16px;
+  line-height: normal;
+  outline: none;
   box-shadow: none !important;
   user-select: text !important;
   -webkit-user-select: text !important;
@@ -373,38 +395,72 @@
   app-region: no-drag;
 }
 
-.lobby-form .lobby-password-input.ant-input-affix-wrapper:focus,
-.lobby-form .lobby-password-input.ant-input-affix-wrapper-focused,
-.lobby-form .lobby-password-input.ant-input-affix-wrapper:focus-within {
+.lobby-password-native.is-masked {
+  -webkit-text-security: disc;
+}
+
+.lobby-password-native.is-visible {
+  -webkit-text-security: none;
+}
+
+.lobby-password-control:focus-within {
   border-color: rgba(90, 148, 40, 0.6) !important;
   box-shadow: 0 0 0 4px rgba(90, 148, 40, 0.15) !important;
   transform: translateY(-1px);
 }
 
+.lobby-password-control:hover:not(.is-disabled) {
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.lobby-password-control.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .password-visibility-button {
-  flex: 0 0 auto;
-  padding: 3px 4px;
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 11px;
-  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.64);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.password-visibility-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .password-visibility-button:hover:not(:disabled),
 .password-visibility-button:focus-visible {
   color: rgba(255, 255, 255, 0.95);
   background: rgba(255, 255, 255, 0.08);
-  outline: none;
+  outline: 2px solid rgba(90, 148, 40, 0.7);
+  outline-offset: 1px;
 }
 
 .lobby-form .ant-input::placeholder,
 .lobby-form .ant-input-password input::placeholder,
-.lobby-form .lobby-password-input input::placeholder {
+.lobby-password-native::placeholder {
   color: rgba(255, 255, 255, 0.4);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.4);
 }
 
 .lobby-form .ant-input:focus,
@@ -412,12 +468,6 @@
   border-color: rgba(90, 148, 40, 0.6) !important;
   box-shadow: 0 0 0 4px rgba(90, 148, 40, 0.15) !important;
   transform: translateY(-1px);
-}
-
-.lobby-form .lobby-password-input > input.ant-input:focus {
-  border-color: transparent !important;
-  box-shadow: none !important;
-  transform: none;
 }
 
 /* 密码输入框聚焦状态 */
@@ -433,16 +483,42 @@
   background: rgba(255, 255, 255, 0.08) !important;
 }
 
-.lobby-form .lobby-password-input > input.ant-input:hover,
-.lobby-form .lobby-password-input > input.ant-input:focus {
-  border-color: transparent !important;
-  background: transparent !important;
-}
-
 /* 密码输入框悬停状态 */
 .lobby-form .ant-input-password:hover {
   border-color: rgba(255, 255, 255, 0.35) !important;
   background: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme='light'] .lobby-password-control {
+  color: #18202b;
+  background: #ffffff !important;
+  border-color: rgba(24, 32, 43, 0.18) !important;
+}
+
+html[data-theme='light'] .lobby-password-control:hover:not(.is-disabled) {
+  background: #f8faf7 !important;
+  border-color: rgba(82, 196, 26, 0.55) !important;
+}
+
+html[data-theme='light'] .lobby-password-native {
+  color: #18202b !important;
+  -webkit-text-fill-color: #18202b !important;
+  caret-color: #18202b;
+}
+
+html[data-theme='light'] .lobby-password-native::placeholder {
+  color: #85909d;
+  -webkit-text-fill-color: #85909d;
+}
+
+html[data-theme='light'] .password-visibility-button {
+  color: #596574;
+}
+
+html[data-theme='light'] .password-visibility-button:hover:not(:disabled),
+html[data-theme='light'] .password-visibility-button:focus-visible {
+  color: #18202b;
+  background: rgba(24, 32, 43, 0.07);
 }
 
 .lobby-form-actions {

@@ -650,6 +650,31 @@ function App() {
           }
         } catch (error) {
           console.error('❌ WebRTC 初始化失败:', error);
+
+          // 若用户已经主动离开或切换了大厅，不再把旧初始化任务的结束
+          // 当成当前大厅错误，也不重复停止新会话。
+          if (useAppStore.getState().lobby?.id !== lobby.id) return;
+
+          // 后端 EasyTier 加入成功并不代表信令大厅注册成功。此前密码错误
+          // 或跨平台凭据不一致只会写日志，界面却停留在一个“只有自己”的
+          // 假大厅。现在回滚两层连接并把真实错误反馈给用户。
+          try {
+            await invoke('leave_lobby');
+          } catch (leaveError) {
+            console.warn('信令初始化失败后清理 EasyTier 大厅失败:', leaveError);
+          }
+
+          const store = useAppStore.getState();
+          store.clearLobby();
+          store.setAppState('idle');
+
+          const detail = error instanceof Error ? error.message : String(error);
+          Modal.error({
+            title: tl('加入大厅同步失败', 'Lobby synchronization failed'),
+            content: detail,
+            okText: tl('返回重试', 'Return and retry'),
+            centered: true,
+          });
         }
       };
 

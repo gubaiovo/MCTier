@@ -16,6 +16,7 @@ import type { PublicLobby } from '../../services/lobby/publicLobbies';
 import { parseLobbyInviteText, type LobbyInvite } from '../../services/lobby/lobbyInvite';
 import { useTranslation } from 'react-i18next';
 import { tl, getLanguage } from '../../i18n';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './LobbyForm.css';
 
 const { Title } = Typography;
@@ -47,6 +48,63 @@ interface ServerNodeSelectProps {
   ariaLabel: string;
   onChange?: (value: string) => void;
 }
+
+interface LobbyPasswordInputProps
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size' | 'type' | 'value'> {
+  value?: string;
+}
+
+/**
+ * A stable password editor for desktop WebViews.
+ *
+ * On macOS, changing an input into a native secure text field can leave
+ * WKWebView's first-responder state stuck until the visibility control is
+ * clicked. Keeping the DOM input as `type=text` and masking it with WebKit's
+ * text-security style avoids that focus bug without changing the form value.
+ */
+const LobbyPasswordInput = React.forwardRef<HTMLInputElement, LobbyPasswordInputProps>(
+  ({ value = '', disabled, className, ...inputProps }, ref) => {
+    const [visible, setVisible] = useState(false);
+
+    return (
+      <div className={`lobby-password-control${disabled ? ' is-disabled' : ''}`}>
+        <input
+          {...inputProps}
+          ref={ref}
+          type="text"
+          value={value ?? ''}
+          disabled={disabled}
+          className={`lobby-password-native${visible ? ' is-visible' : ' is-masked'}${className ? ` ${className}` : ''}`}
+          aria-label={inputProps['aria-label'] || tl('大厅密码', 'Lobby password')}
+        />
+        <button
+          type="button"
+          className="password-visibility-button"
+          aria-label={visible ? tl('隐藏密码', 'Hide password') : tl('显示密码', 'Show password')}
+          aria-pressed={visible}
+          disabled={disabled}
+          data-tauri-no-drag
+          onMouseDown={(event) => event.preventDefault()}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => setVisible((current) => !current)}
+        >
+          {visible ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.3A10.8 10.8 0 0 1 12 4c5.2 0 8.7 4.6 9.6 6-.4.7-1.5 2.2-3 3.5M6.2 6.2C4.3 7.4 3 9.3 2.4 10.3c.9 1.4 4.4 6 9.6 6 1.2 0 2.3-.2 3.3-.6" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2.4 12S6 6.5 12 6.5 21.6 12 21.6 12 18 17.5 12 17.5 2.4 12 2.4 12Z" />
+              <circle cx="12" cy="12" r="2.5" />
+            </svg>
+          )}
+        </button>
+      </div>
+    );
+  }
+);
+
+LobbyPasswordInput.displayName = 'LobbyPasswordInput';
 
 const ServerNodeSelect: React.FC<ServerNodeSelectProps> = ({
   value,
@@ -325,10 +383,6 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const isMacOS = typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [form] = Form.useForm<LobbyFormValues>();
   const [loading, setLoading] = useState(false);
-  // 不使用 Ant Design 的 Input.Password 内置切换器：Tauri 的 WKWebView 在
-  // 初始 `type=password` 状态下偶发无法把键盘焦点交给输入框，点击眼睛后
-  // 才恢复。显式控制 input type 可以保持密码默认隐藏，同时确保首次点击即可输入。
-  const [showPassword, setShowPassword] = useState(false);
   const preferredServerSaveGeneration = useRef(0);
   const [showCustomServer, setShowCustomServer] = useState(config.preferredServer === 'custom');
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
@@ -733,12 +787,17 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       setLoading(true);
       setAppState('connecting');
 
+      // 创建 EasyTier 网络和注册信令大厅必须使用完全相同的规范化凭据。
+      // 只在这里做一次 trim，避免表单/后端/重连分别处理后产生房间分叉。
+      const lobbyName = values.lobbyName?.trim() || '';
+      const lobbyPassword = values.password?.trim() || '';
+
       // 验证输入
-      if (!values.lobbyName?.trim()) {
+      if (!lobbyName) {
         message.error(tl('大厅名称不能为空', 'Lobby name cannot be empty'));
         return;
       }
-      if (!values.password?.trim()) {
+      if (!lobbyPassword) {
         message.error(tl('密码不能为空', 'Password cannot be empty'));
         return;
       }
@@ -845,7 +904,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       
       console.log('准备调用后端命令:', commandName);
       console.log('参数:', {
-        name: values.lobbyName.trim(),
+        name: lobbyName,
         playerName: values.playerName.trim(),
         playerId: currentPlayerId,
         serverNode: serverNode,
@@ -856,8 +915,8 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       
       // 调用后端命令
       const lobby = await invoke<Lobby>(commandName, {
-        name: values.lobbyName.trim(),
-        password: values.password.trim(),
+        name: lobbyName,
+        password: lobbyPassword,
         playerName: values.playerName.trim(),
         playerId: currentPlayerId,
         serverNode: serverNode,
@@ -909,8 +968,8 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       // 记录到"最近大厅"，便于下次快速重进
       try {
         recentService.recordLobby({
-          name: values.lobbyName.trim(),
-          password: values.password.trim(),
+          name: lobbyName,
+          password: lobbyPassword,
           playerName: values.playerName.trim(),
           useDomain: values.useDomain === true,
           serverNode,
@@ -1136,8 +1195,14 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   });
 
   return (
-    <div className="lobby-form-container" data-tauri-drag-region>
-      
+    <div className="lobby-form-container">
+      <div
+        className="lobby-form-drag-strip"
+        data-tauri-drag-region
+        onMouseDown={startWindowDrag}
+        aria-hidden="true"
+      />
+
       <motion.div
         ref={scrollContainerRef}
         className="lobby-form-card"
@@ -1286,7 +1351,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
             </Form.Item>
 
             <Form.Item
-              label={tl('密码', 'Password')}
+              label={mode === 'create' ? tl('设置密码', 'Set Password') : tl('输入密码', 'Enter Password')}
               name="password"
               rules={[
                 { required: true, message: tl('请输入密码', 'Please enter a password') },
@@ -1308,28 +1373,17 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 },
               ]}
             >
-              <Input
-                className="lobby-password-input"
-                type={showPassword ? 'text' : 'password'}
-                placeholder={tl('输入密码（至少8个字符，包含字母和数字）', 'Password (min 8 chars, letters and digits)')}
-                size="large"
+              <LobbyPasswordInput
+                placeholder={
+                  mode === 'create'
+                    ? tl('设置密码（至少8个字符，包含字母和数字）', 'Set a password (min 8 chars, letters and digits)')
+                    : tl('输入房主提供的密码', 'Enter the password supplied by the host')
+                }
                 disabled={loading}
-                autoComplete="new-password"
+                autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+                autoCapitalize="none"
+                autoCorrect="off"
                 spellCheck={false}
-                suffix={(
-                  <button
-                    type="button"
-                    className="password-visibility-button"
-                    aria-label={showPassword ? tl('隐藏密码', 'Hide password') : tl('显示密码', 'Show password')}
-                    aria-pressed={showPassword}
-                    disabled={loading}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => setShowPassword((visible) => !visible)}
-                  >
-                    {showPassword ? tl('隐藏', 'Hide') : tl('显示', 'Show')}
-                  </button>
-                )}
               />
             </Form.Item>
 

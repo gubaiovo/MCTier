@@ -41,6 +41,13 @@ export interface PeerConnection {
   createdAt: number; // 连接创建时间
 }
 
+class SignalingRegistrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SignalingRegistrationError';
+  }
+}
+
 /**
  * WebRTC 客户端类
  */
@@ -291,6 +298,9 @@ export class WebRTCClient {
             this.websocket = null;
           }
         } catch { /* ignore */ }
+        // 密码/版本等注册拒绝不是瞬时网络故障，重复连接只会让客户端
+        // 看起来进入了一个空大厅，并给服务器制造无意义的重试。
+        if (e instanceof SignalingRegistrationError) throw e;
         if (attempt < maxAttempts) {
           await new Promise((r) => setTimeout(r, 1200));
         }
@@ -309,13 +319,40 @@ export class WebRTCClient {
         
         const socket = new WebSocket(this.signalingServerUrl);
         let hasOpened = false;
+        let registrationAccepted = false;
+        let registrationRejected = false;
+        let promiseSettled = false;
+        let registrationTimeout: number | null = null;
         this.websocket = socket;
+
+        const clearRegistrationTimeout = () => {
+          if (registrationTimeout !== null) {
+            window.clearTimeout(registrationTimeout);
+            registrationTimeout = null;
+          }
+        };
+
+        const acceptRegistration = () => {
+          if (promiseSettled) return;
+          promiseSettled = true;
+          registrationAccepted = true;
+          clearRegistrationTimeout();
+          resolve();
+        };
+
+        const rejectRegistration = (error: Error) => {
+          if (promiseSettled) return;
+          promiseSettled = true;
+          registrationRejected = true;
+          clearRegistrationTimeout();
+          reject(error);
+        };
         
         this.websocket.onopen = () => {
           if (this.websocket !== socket) return;
           hasOpened = true;
           console.log('✅ 已连接到信令服务器');
-          
+
           // 注册到服务器
           if (this.websocket) {
             this.websocket.send(JSON.stringify({
@@ -331,6 +368,16 @@ export class WebRTCClient {
             }));
             console.log('📤 已发送注册消息，玩家名称:', this.localPlayerName, '大厅:', this.lobbyName, '虚拟域名:', this.virtualDomain, '使用域名:', this.useDomain);
           }
+
+          // WebSocket 打开不等于加入大厅成功。必须等待服务端确认密码和
+          // 房间身份，否则 register-error 会被吞掉，界面仍会显示“已加入”。
+          registrationTimeout = window.setTimeout(() => {
+            rejectRegistration(new Error(tl(
+              '信令服务器未确认加入大厅，请检查网络后重试',
+              'The signaling server did not confirm the lobby registration; check the network and retry'
+            )));
+            try { socket.close(); } catch { /* ignore */ }
+          }, 10000);
           
           // 启动 WebSocket 心跳保活
           this.startWebSocketHeartbeat();
@@ -350,6 +397,23 @@ export class WebRTCClient {
             this.websocketMessageQueue = this.websocketMessageQueue
               .then(() => this.handleWebSocketMessage(message))
               .catch((error) => console.error('WebSocket message processing failed:', error));
+
+            if (message.type === 'register-success') {
+              acceptRegistration();
+            } else if (message.type === 'register-error') {
+              const detail = typeof message.message === 'string' && message.message.trim()
+                ? message.message.trim()
+                : tl('大厅名称或密码不匹配', 'The lobby name or password does not match');
+              rejectRegistration(new SignalingRegistrationError(
+                tl(`无法加入信令大厅：${detail}`, `Unable to join the signaling lobby: ${detail}`)
+              ));
+              try { socket.close(); } catch { /* ignore */ }
+            } else if (message.type === 'version-too-old') {
+              rejectRegistration(new SignalingRegistrationError(tl(
+                '客户端版本过低，无法加入大厅',
+                'The client version is too old to join the lobby'
+              )));
+            }
           } catch (error) {
             console.error('❌ 解析WebSocket消息失败:', error);
           }
@@ -358,7 +422,7 @@ export class WebRTCClient {
         this.websocket.onerror = (error) => {
           if (this.websocket !== socket) return;
           console.error('❌ WebSocket连接错误:', error);
-          if (!hasOpened) reject(new Error('无法连接到信令服务器'));
+          if (!hasOpened) rejectRegistration(new Error('无法连接到信令服务器'));
         };
         
         this.websocket.onclose = () => {
@@ -373,18 +437,23 @@ export class WebRTCClient {
           
           // 停止 WebSocket 心跳
           this.stopWebSocketHeartbeat();
-          
+
+          if (!promiseSettled) {
+            rejectRegistration(new Error(
+              hasOpened ? '信令服务器在确认大厅注册前断开' : '信令服务器在连接建立前断开'
+            ));
+            return;
+          }
+
+          // 注册被明确拒绝后由 initialize() 负责完整清理，不应进入自动重连。
+          if (registrationRejected) return;
+
           // 如果不是主动断开，尝试重连
           if (this.isIntentionalDisconnect) {
             return;
           }
 
-          if (!hasOpened) {
-            reject(new Error('信令服务器在连接建立前断开'));
-            return;
-          }
-
-          if (!this.isIntentionalDisconnect) {
+          if (registrationAccepted && !this.isIntentionalDisconnect) {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * this.reconnectAttempts, 5000); // 线性退避，最多5秒
             console.log(`🔄 将在 ${delay}ms 后尝试第 ${this.reconnectAttempts} 次重连...`);
@@ -708,12 +777,9 @@ export class WebRTCClient {
             if (player.playerId === this.localPlayerId) {
               continue;
             }
-            // 虚拟 IP 在大厅内唯一。服务端残留旧连接或重复广播本机身份时，
-            // 不把同一台设备当成远端玩家，也不向自己的 IP 建立语音连接。
-            if (player.virtualIp && this.virtualIp && player.virtualIp === this.virtualIp) {
-              console.warn(`⚠️ 忽略与本机虚拟 IP 相同的玩家条目: ${player.playerName} (${player.playerId})`);
-              continue;
-            }
+            // 成员身份只以信令服务器分配的 playerId 为准。虚拟 IP 可能在
+            // TUN 刚建立时短暂缺失、被旧日志误报，或在异常 DHCP 状态下重复；
+            // 用 IP 过滤会让 macOS 客户端把真实的 Windows/Android 成员隐藏掉。
             listedIds.add(player.playerId);
 
             const wasPendingLeave = this.clearPendingPlayerLeave(player.playerId);
@@ -839,11 +905,6 @@ export class WebRTCClient {
           if (message.playerId === this.localPlayerId) {
             break;
           }
-          if (message.virtualIp && this.virtualIp && message.virtualIp === this.virtualIp) {
-            console.warn(`⚠️ 忽略与本机虚拟 IP 相同的加入事件: ${message.playerName} (${message.playerId})`);
-            break;
-          }
-
           const isRecoveredPlayer = this.clearPendingPlayerLeave(message.playerId);
           if (isRecoveredPlayer) {
             console.log(`♻️ 玩家 ${message.playerId} 在短时断线窗口内恢复，跳过离开/加入提示音`);

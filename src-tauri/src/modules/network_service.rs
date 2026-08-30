@@ -1471,7 +1471,7 @@ text returned of result
             let line_lower = line.to_lowercase();
             
             // 检查是否包含虚拟IP相关的关键词
-            let _is_virtual_ip_line = line_lower.contains("virtual ip") 
+            let is_virtual_ip_line = line_lower.contains("virtual ip")
                 || line_lower.contains("assigned ip")
                 || line_lower.contains("dhcp")
                 || line_lower.contains("got ip")
@@ -1487,7 +1487,10 @@ text returned of result
                 || line.contains("listeners")
                 || line.contains("rpc_portal =");
             
-            if !is_excluded {
+            // EasyTier also logs listener, peer and physical-interface addresses.
+            // Accepting any private IPv4 from those lines can register a macOS
+            // client with a LAN/peer address and then corrupt member routing.
+            if is_virtual_ip_line && !is_excluded {
                 if let Some(ip) = Self::extract_ip_from_line(&line) {
                     // 排除网络地址（最后一位是0）和广播地址（最后一位是255）
                     let parts: Vec<&str> = ip.split('.').collect();
@@ -1716,6 +1719,26 @@ text returned of result
 
         if let Some(mut child) = process_guard.take() {
             log::info!("🔄 [StopEasyTier] 正在优雅关闭 EasyTier 进程...");
+
+            // macOS 非 root GUI 通过 sudo 包装 EasyTier。直接 kill 包装进程
+            // 可能留下 root 子进程和旧 utun 路由，下一次加入时就会出现错网、
+            // 重复地址或成员不可见。先只终止该 sudo 进程的直接子进程；
+            // 以父 PID 限定范围，不影响用户单独运行的其它 EasyTier 实例。
+            #[cfg(target_os = "macos")]
+            if let Some(parent_pid) = child.id() {
+                let parent_pid_string = parent_pid.to_string();
+                let _ = tokio::process::Command::new("/usr/bin/sudo")
+                    .args([
+                        "-n",
+                        "/usr/bin/pkill",
+                        "-TERM",
+                        "-P",
+                        parent_pid_string.as_str(),
+                    ])
+                    .output()
+                    .await;
+                sleep(Duration::from_millis(250)).await;
+            }
             
             // 尝试优雅地终止进程
             match child.kill().await {

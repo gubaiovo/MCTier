@@ -15,6 +15,7 @@ import { useEscapeKey } from '../../hooks';
 import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
 import { DOWNLOAD_WEBSITE } from '../../services/version/versionPolicy';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './MainWindow.css';
 
 const { Title, Paragraph } = Typography;
@@ -224,7 +225,7 @@ export const MainWindow: React.FC = () => {
   return (
     <div className={`main-window ${!enableGpuRendering ? 'gpu-rendering-disabled' : ''}`}>
       {/* 拖拽区域 - 只在顶部 */}
-      <div className="main-window-drag-area" data-tauri-drag-region>
+      <div className="main-window-drag-area" data-tauri-drag-region onMouseDown={startWindowDrag}>
         <div className="main-window-controls">
           <button className="main-window-control-btn" onClick={handleMinimizeToTray} title={tl('最小化到系统托盘', 'Minimize to system tray')}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">

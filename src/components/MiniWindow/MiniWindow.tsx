@@ -39,6 +39,7 @@ import {
   formatLobbyInviteText,
   type LobbyInvite,
 } from '../../services/lobby/lobbyInvite';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './MiniWindow.css';
 
 /**
@@ -1418,7 +1419,7 @@ export const MiniWindow: React.FC = () => {
             exit={{ opacity: 1 }}
             transition={{ duration: 0 }}
           >
-            <div className="chat-room-header">
+            <div className="chat-room-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
               <h3 className="chat-room-title">{tl('聊天室', 'Chat Room')}</h3>
               <button
                 className="back-button"
@@ -1439,7 +1440,7 @@ export const MiniWindow: React.FC = () => {
             exit={{ opacity: 1 }}
             transition={{ duration: 0 }}
           >
-            <div className="file-share-header">
+            <div className="file-share-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
               <div className="file-share-title-wrapper">
                 <h3 className="file-share-title">{tl('文件夹共享', 'Folder Sharing')}</h3>
                 <Tooltip 
@@ -1473,7 +1474,7 @@ export const MiniWindow: React.FC = () => {
             exit={{ opacity: 1 }}
             transition={{ duration: 0 }}
           >
-            <div className="screen-share-header">
+            <div className="screen-share-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
               <div className="screen-share-title-wrapper">
                 <h3 className="screen-share-title">{tl('屏幕共享', 'Screen Sharing')}</h3>
                 <Tooltip 
@@ -1508,7 +1509,7 @@ export const MiniWindow: React.FC = () => {
             exit={{ opacity: 1 }}
             transition={{ duration: 0 }}
           >
-        <div className="mini-window-header">
+        <div className="mini-window-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
           <h3 className="mini-window-title">
             {collapsed && lobby ? (
               <>

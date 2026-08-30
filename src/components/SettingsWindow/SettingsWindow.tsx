@@ -17,6 +17,7 @@ import { clearAvatarData, saveAvatarData } from '../../services/avatar/avatarSer
 import { useAppStore } from '../../stores';
 import { SettingsAvatarPicker } from '../SettingsAvatar/SettingsAvatarPicker';
 import { persistThemePreference, readThemePreference, type ThemePreference } from '../../theme/themePreference';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './SettingsWindow.css';
 
 /** 可自定义的全局快捷键项 */
@@ -443,7 +444,7 @@ export const SettingsWindow: React.FC<{ onClose: () => void }> = ({ onClose }) =
   if (loading) {
     return (
       <div className="settings-window">
-        <div className="settings-drag-area" data-tauri-drag-region />
+        <div className="settings-drag-area" data-tauri-drag-region onMouseDown={startWindowDrag} />
         <div className="settings-loading"><span className="settings-btn-spinner" /></div>
       </div>
     );
@@ -451,7 +452,7 @@ export const SettingsWindow: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
   return (
     <div className="settings-window">
-      <div className="settings-drag-area" data-tauri-drag-region />
+      <div className="settings-drag-area" data-tauri-drag-region onMouseDown={startWindowDrag} />
       <div className="settings-bg-orb settings-bg-orb-1" />
       <div className="settings-bg-orb settings-bg-orb-2" />
       <div className="settings-window-scroll">

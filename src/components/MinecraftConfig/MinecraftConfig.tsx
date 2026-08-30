@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
 import { CloseIcon } from '../icons';
 import { useEscapeKey } from '../../hooks';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './MinecraftConfig.css';
 
 const { Title, Paragraph, Text } = Typography;
@@ -106,7 +107,7 @@ export const MinecraftConfig: React.FC<MinecraftConfigProps> = ({ onClose }) => 
 
   return (
     <div className="minecraft-config">
-      <div className="minecraft-config-header" data-tauri-drag-region>
+      <div className="minecraft-config-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
         <Title level={4} data-tauri-drag-region>{tl('Minecraft 正版验证配置', 'Minecraft License Verification Config')}</Title>
         <button className="close-button" onClick={onClose}>
           <CloseIcon />
