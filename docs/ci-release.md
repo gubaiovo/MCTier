@@ -38,6 +38,7 @@ Android 当前只发布 `arm64-v8a`。这是源码现状决定的：EasyTier JNI
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
 
 PR、开发版和 Nightly 的 macOS 包使用 ad-hoc 签名；正式标签构建使用 Developer ID 签名并由 Tauri 执行公证。
+桌面端弹幕与游戏 HUD 使用透明悬浮窗，因此 `tauri.conf.json` 启用了 `app.macOSPrivateApi`；这类构建面向 GitHub Release 的 Developer ID 分发，不适用于 Mac App Store 审核。
 
 ### Android
 
