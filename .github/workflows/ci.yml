@@ -430,8 +430,12 @@ jobs:
           & npm @arguments
           if ($LASTEXITCODE -ne 0) { throw "Tauri build failed with exit code $LASTEXITCODE" }
 
-      - name: Build macOS DMG
-        if: runner.os == 'macOS'
+      - name: Build ad-hoc signed macOS DMG
+        if: runner.os == 'macOS' && needs.metadata.outputs.publish != 'true'
+        run: npm run tauri build -- --target "${{ matrix.target }}" --bundles dmg --ci
+
+      - name: Build signed and notarized macOS DMG
+        if: runner.os == 'macOS' && needs.metadata.outputs.publish == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
