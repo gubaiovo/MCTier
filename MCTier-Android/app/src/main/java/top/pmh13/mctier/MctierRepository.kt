@@ -542,18 +542,10 @@ class MctierRepository(private val context: Context) {
                 ) {
                     top.pmh13.mctier.service.VoiceForegroundService.start(appContext)
                 }
-                signalingClient.connect(
-                    ConnectArgs(
-                        url = lobby.signalingServer,
-                        playerId = current.playerId,
-                        playerName = settings.playerName,
-                        lobbyName = lobby.name,
-                        lobbyPassword = lobby.password,
-                        virtualIp = lobby.virtualIp,
-                        virtualDomain = lobby.virtualDomain,
-                        useDomain = lobby.useDomain,
-                    ),
-                )
+                // 必须先提交本地大厅状态，再打开 WebSocket。服务端通常会在注册后立即回发
+                // players-list；若 connect() 在前，回包线程可能先合并远端成员，随后这里的
+                // players = listOf(self) 又把他们全部覆盖，表现为虚拟 IP 可互通但成员列表为空。
+                // connected 监听同样依赖 InLobby 状态，因此顺序也会影响首次注册后的同步。
                 _state.update {
                     it.copy(
                         state = AppConnectionState.InLobby,
@@ -569,6 +561,18 @@ class MctierRepository(private val context: Context) {
                         ),
                     )
                 }
+                signalingClient.connect(
+                    ConnectArgs(
+                        url = lobby.signalingServer,
+                        playerId = current.playerId,
+                        playerName = settings.playerName,
+                        lobbyName = lobby.name,
+                        lobbyPassword = lobby.password,
+                        virtualIp = lobby.virtualIp,
+                        virtualDomain = lobby.virtualDomain,
+                        useDomain = lobby.useDomain,
+                    ),
+                )
                 recordRecentLobby(lobby.name, lobby.password, effectiveNode, effectiveSignaling)
                 statsStartSession()
             }.onFailure { e ->

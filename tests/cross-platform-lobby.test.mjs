@@ -26,6 +26,13 @@ const androidRepository = fs.readFileSync(
   ),
   'utf8'
 );
+const androidSignaling = fs.readFileSync(
+  new URL(
+    '../MCTier-Android/app/src/main/java/top/pmh13/mctier/network/SignalingClient.kt',
+    import.meta.url
+  ),
+  'utf8'
+);
 const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 
 test('lobby members are identified by player ID instead of a transient virtual IP', () => {
@@ -85,6 +92,28 @@ test('Android normalizes shared credentials and rolls back a rejected registrati
   assert.match(androidRepository, /"register-error" ->/);
   assert.match(androidRepository, /leaveLobby\(\)/);
   assert.match(androidRepository, /state = AppConnectionState\.Error/);
+});
+
+test('Android publishes its lobby state before signaling can deliver the initial roster', () => {
+  const joinBlock = androidRepository.slice(
+    androidRepository.indexOf('fun createOrJoinLobby('),
+    androidRepository.indexOf('fun leaveLobby()')
+  );
+  const inLobbyIndex = joinBlock.indexOf('state = AppConnectionState.InLobby');
+  const connectIndex = joinBlock.indexOf('signalingClient.connect(');
+
+  assert.ok(inLobbyIndex >= 0, 'join flow must publish InLobby state');
+  assert.ok(connectIndex >= 0, 'join flow must open signaling');
+  assert.ok(
+    inLobbyIndex < connectIndex,
+    'players-list must not be overwritten by a post-connect self-only roster'
+  );
+});
+
+test('Android buffers initial signaling events until its single roster consumer is ready', () => {
+  assert.match(androidSignaling, /Channel<SignalingEnvelope>/);
+  assert.match(androidSignaling, /receiveAsFlow\(\)/);
+  assert.doesNotMatch(androidSignaling, /MutableSharedFlow<SignalingEnvelope>/);
 });
 
 test('EasyTier IP parsing ignores unrelated private addresses from peer logs', () => {

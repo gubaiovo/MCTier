@@ -3,11 +3,12 @@ package top.pmh13.mctier.network
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -34,8 +35,10 @@ class SignalingClient {
     @Volatile private var stableJob: Job? = null
     @Volatile private var heartbeatJob: Job? = null
 
-    private val _events = MutableSharedFlow<SignalingEnvelope>(extraBufferCapacity = 64)
-    val events: SharedFlow<SignalingEnvelope> = _events
+    // 信令消息是单消费者事件流，不是可丢弃的广播状态。MutableSharedFlow(replay=0)
+    // 在收集器尚未订阅时会静默丢弃消息；Channel 会保留启动阶段快速到达的首批名册。
+    private val eventChannel = Channel<SignalingEnvelope>(capacity = Channel.BUFFERED)
+    val events: Flow<SignalingEnvelope> = eventChannel.receiveAsFlow()
 
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected
@@ -86,7 +89,22 @@ class SignalingClient {
                 if (ws !== webSocket) return
                 runCatching {
                     MctierJson.decodeFromString(SignalingEnvelope.serializer(), text)
-                }.onSuccess { _events.tryEmit(it) }
+                }.onSuccess { message ->
+                    if (eventChannel.trySend(message).isFailure) {
+                        android.util.Log.e(
+                            "SignalingClient",
+                            "Dropped signaling event type=${message.type}: event buffer is full",
+                        )
+                    }
+                }.onFailure { error ->
+                    // 不输出原始帧，避免聊天内容等数据进入日志；保留类型无关的解析错误即可
+                    // 判断线上信令服务是否仍运行着与客户端模型不兼容的旧协议。
+                    android.util.Log.e(
+                        "SignalingClient",
+                        "Failed to decode signaling frame: ${error.message}",
+                        error,
+                    )
+                }
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
