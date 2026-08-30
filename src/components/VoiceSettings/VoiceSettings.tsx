@@ -15,7 +15,6 @@ import { Modal, Select, Button, Typography, Space, Progress, message } from 'ant
 import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
 import { audioDevices } from '../../services/voice/audioDevices';
-import { localVqeService } from '../../services/voice/localVqeService';
 import { webrtcClient } from '../../services';
 
 const { Text } = Typography;
@@ -54,12 +53,7 @@ export const VoiceDevicePanel: React.FC<VoiceDevicePanelProps> = ({ active = tru
 
   const loadDevices = async () => {
     try {
-      // 触发一次权限请求，否则设备 label 为空
-      try {
-        const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
-        tmp.getTracks().forEach((t) => t.stop());
-      } catch { /* 用户可能拒绝，仍尝试枚举 */ }
-
+      // 仅枚举设备；麦克风权限只在用户明确点击「开始试音」时申请。
       const devices = await navigator.mediaDevices.enumerateDevices();
       const ins: DeviceOption[] = [{ value: '', label: tl('系统默认麦克风', 'System Default Microphone') }];
       const outs: DeviceOption[] = [{ value: '', label: tl('系统默认扬声器', 'System Default Speaker') }];
@@ -128,7 +122,6 @@ export const VoiceDevicePanel: React.FC<VoiceDevicePanelProps> = ({ active = tru
     audioDevices.setOutputDeviceId(id, outputs.find((option) => option.value === id)?.label || '');
     try {
       await webrtcClient.applyOutputDeviceToAll(id);
-      await localVqeService.refreshOutputReference();
       message.success(tl('扬声器已切换并对当前通话生效', 'Speaker switched and applied to the current call'));
     } catch {
       message.success(tl('扬声器已切换', 'Speaker switched'));
@@ -138,8 +131,15 @@ export const VoiceDevicePanel: React.FC<VoiceDevicePanelProps> = ({ active = tru
   const startMicTest = async (deviceId?: string) => {
     try {
       const id = deviceId !== undefined ? deviceId : inputId;
+      // 与实际发送链路保持一致的纯原声采集：浏览器默认会开启 AEC/NS/AGC，
+      // 若不显式关闭，麦克风音量条反映的就不是真正发出去的波形。
       const constraints: MediaStreamConstraints = {
-        audio: id ? { deviceId: { ideal: id } } : true,
+        audio: {
+          ...(id ? { deviceId: { ideal: id } } : {}),
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
         video: false,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);

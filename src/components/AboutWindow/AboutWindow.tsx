@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button, Typography, Divider, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { open } from '@tauri-apps/plugin-shell';
 import { tl } from '../../i18n';
 import {
   GitHubIcon,
@@ -45,6 +46,13 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
   const [showSponsorModal, setShowSponsorModal] = useState(false);
   const [enlargedQRCode, setEnlargedQRCode] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const openTrustedExternal = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    void open(event.currentTarget.href).catch((error) => {
+      console.error('打开外部链接失败:', error);
+    });
+  };
 
   // ESC键返回
   useEscapeKey(() => {
@@ -302,6 +310,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                 <a
                   href="https://mctier.pmhs.top"
                   target="_blank"
+                  onClick={openTrustedExternal}
                   rel="noopener noreferrer"
                   className="repo-link"
                 >
@@ -311,6 +320,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                 <a
                   href="https://github.com/pmh1314520/MCTier"
                   target="_blank"
+                  onClick={openTrustedExternal}
                   rel="noopener noreferrer"
                   className="repo-link"
                 >
@@ -320,6 +330,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                 <a
                   href="https://gitee.com/peng-minghang/mctier"
                   target="_blank"
+                  onClick={openTrustedExternal}
                   rel="noopener noreferrer"
                   className="repo-link"
                 >
@@ -443,6 +454,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <a
                     href="https://github.com/EasyTier/EasyTier"
                     target="_blank"
+                    onClick={openTrustedExternal}
                     rel="noopener noreferrer"
                     className="third-party-link"
                   >
@@ -472,6 +484,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <a
                     href="https://webrtc.googlesource.com/src"
                     target="_blank"
+                    onClick={openTrustedExternal}
                     rel="noopener noreferrer"
                     className="third-party-link"
                   >
@@ -498,6 +511,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <a
                     href="https://www.wintun.net"
                     target="_blank"
+                    onClick={openTrustedExternal}
                     rel="noopener noreferrer"
                     className="third-party-link"
                   >
@@ -521,6 +535,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <a
                     href="https://reqrypt.org/windivert.html"
                     target="_blank"
+                    onClick={openTrustedExternal}
                     rel="noopener noreferrer"
                     className="third-party-link"
                   >
@@ -547,6 +562,7 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <a
                     href="https://npcap.com"
                     target="_blank"
+                    onClick={openTrustedExternal}
                     rel="noopener noreferrer"
                     className="third-party-link"
                   >
@@ -561,14 +577,14 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                 </Text>
                 <Paragraph className="third-party-line">
                   {tl(
-                    'LocalVQE 依据 Apache-2.0 授权；其内嵌的 GGML 依据 MIT 授权（Copyright (c) 2023 Georgi Gerganov）。语音增强全程在本地完成，不上传任何音频。',
-                    'LocalVQE is licensed under Apache-2.0; the bundled GGML is licensed under MIT (Copyright (c) 2023 Georgi Gerganov). Voice enhancement runs entirely locally; no audio is uploaded.'
+                    'LocalVQE 依据 Apache-2.0 授权；其内嵌的 GGML 依据 MIT 授权（Copyright (c) 2023 Georgi Gerganov）。仅 Android 端使用；桌面端已改为不加处理的原声通话，不再包含该组件。',
+                    'LocalVQE is licensed under Apache-2.0; the bundled GGML is licensed under MIT (Copyright (c) 2023 Georgi Gerganov). Used by the Android client only; the desktop client now sends unprocessed microphone audio and no longer bundles this component.'
                   )}
                 </Paragraph>
                 <Paragraph className="third-party-line">
                   {tl(
-                    '语音降噪模型的训练数据包含 Microsoft DNS Challenge / AEC Challenge 素材，依 CC BY 4.0 授权。',
-                    'The noise-suppression model\u2019s training data includes material from the Microsoft DNS Challenge / AEC Challenge, licensed under CC BY 4.0.'
+                    'Android 端语音降噪模型的训练数据包含 Microsoft DNS Challenge / AEC Challenge 素材，依 CC BY 4.0 授权。',
+                    'The Android noise-suppression model\u2019s training data includes material from the Microsoft DNS Challenge / AEC Challenge, licensed under CC BY 4.0.'
                   )}
                 </Paragraph>
                 <Paragraph className="third-party-line">
@@ -576,36 +592,11 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <a
                     href="https://github.com/localai-org/LocalVQE"
                     target="_blank"
+                    onClick={openTrustedExternal}
                     rel="noopener noreferrer"
                     className="third-party-link"
                   >
                     https://github.com/localai-org/LocalVQE
-                  </a>
-                </Paragraph>
-              </div>
-
-              <div className="third-party-item">
-                <Text strong className="third-party-name">
-                  Javassist
-                </Text>
-                <Paragraph className="third-party-line">
-                  Javassist 3.29.2-GA — Copyright (C) 1999- Shigeru Chiba and contributors
-                </Paragraph>
-                <Paragraph className="third-party-line">
-                  {tl(
-                    '采用 MPL 1.1 / LGPL 2.1 / Apache-2.0 三重许可，本项目选择 Apache-2.0 分支。',
-                    'Triple-licensed under MPL 1.1 / LGPL 2.1 / Apache-2.0; this project chooses the Apache-2.0 branch.'
-                  )}
-                </Paragraph>
-                <Paragraph className="third-party-line">
-                  {tl('源码地址：', 'Source: ')}
-                  <a
-                    href="https://github.com/jboss-javassist/javassist"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="third-party-link"
-                  >
-                    https://github.com/jboss-javassist/javassist
                   </a>
                 </Paragraph>
               </div>

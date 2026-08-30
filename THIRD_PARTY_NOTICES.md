@@ -19,14 +19,13 @@ their licenses, upstream sources, versions and modification status.
 | Wintun (`wintun.dll`) | https://www.wintun.net | 0.14.1 | — | Wintun Prebuilt Binaries License | 否 / No（见 §7） |
 | WinDivert (`WinDivert64.sys`) | https://reqrypt.org/windivert.html | 2.2.2 | — | LGPL-3.0（双许可中所选分支） | 否 / No（见 §7） |
 | Npcap (`Packet.dll`) | https://npcap.com | 1.79 | — | 专有 / Proprietary | 否 / No（授权状态见 §8） |
-| Javassist（内嵌于 offline agent） | https://github.com/jboss-javassist/javassist | 3.29.2-GA | — | Apache-2.0（三重许可中所选分支） | 否 / No（见 §9） |
-| LocalVQE (`liblocalvqe.so` / `localvqe.wasm`) | https://github.com/localai-org/LocalVQE | 见 §10 | — | Apache-2.0 | 否 / No（见 §10） |
-| GGML（内嵌于 LocalVQE） | https://github.com/ggerganov/ggml | 见 §10 | — | MIT | 否 / No（见 §10） |
-| GTCRN 模型权重 (`*.gguf`) | https://huggingface.co/LocalAI-io/LocalVQE | pi-v1-49k-f32 | — | 训练数据含 CC BY 4.0 素材 | 否 / No（见 §10） |
-| WebRTC | https://webrtc.googlesource.com/src | 见 §11 | — | BSD-3-Clause | 否 / No |
+| LocalVQE (`liblocalvqe.so`，仅 Android 端) | https://github.com/localai-org/LocalVQE | 见 §9 | — | Apache-2.0 | 否 / No（见 §9） |
+| GGML（内嵌于 LocalVQE） | https://github.com/ggerganov/ggml | 见 §9 | — | MIT | 否 / No（见 §9） |
+| GTCRN 模型权重 (`*.gguf`，仅 Android 端) | https://huggingface.co/LocalAI-io/LocalVQE | pi-v1-49k-f32 | — | 训练数据含 CC BY 4.0 素材 | 否 / No（见 §9） |
+| WebRTC | https://webrtc.googlesource.com/src | 见 §10 | — | BSD-3-Clause | 否 / No |
 
 > 说明：本表覆盖 MCTier 分发物中所有**内嵌或随包分发**的第三方二进制与模型。
-> 应用级依赖（npm / crate / Gradle）见 §11。
+> 应用级依赖（npm / crate / Gradle）见 §10。
 
 ---
 
@@ -54,7 +53,7 @@ MCTier 不对 EasyTier 的版权主体作任何额外主张。
 ## 3. 许可证边界 / License Boundary
 
 - MCTier 自有代码使用 MCTier 自定义**源码可得（source-available）非商业**许可（见 `LICENSE`）。
-- **本表及下文列出的全部第三方组件**（EasyTier、Wintun、WinDivert、Npcap、Javassist、
+- **本表及下文列出的全部第三方组件**（EasyTier、Wintun、WinDivert、Npcap、
   LocalVQE、GGML、模型权重、WebRTC 及各应用级依赖），连同 MCTier 对它们所作的任何
   衍生或修改部分，**均不适用** MCTier 自定义许可，而继续按各自许可证授权。
 - MCTier 自定义许可中的“禁止商业用途”“二次开发必须以相同协议开源”等条款
@@ -320,41 +319,22 @@ Npcap 再分发面仅剩 `Packet.dll` 一项。
 
 ---
 
-## 9. `minecraft-offline-agent.jar` 内嵌的 Javassist / Javassist in the Offline Agent
+## 9. LocalVQE / GGML / 模型权重 / LocalVQE, GGML and Model Weights
 
-该 JAR（794,605 字节，SHA-256
-`30AC1A18CC80E505077E5F1EEB21BF2E952947B47FFC5801AD9356E2E7BBBEE2`）共 451 个条目，
-其中 443 个属 `javassist/`，另有 3 个 `com/mctier/agent/` 类。
-
-Javassist 采用 MPL 1.1 / LGPL 2.1 / Apache-2.0 三重许可。**MCTier 选择 Apache-2.0 分支。**
-
-```
-Javassist 3.29.2-GA
-Copyright (C) 1999- Shigeru Chiba and contributors
-Licensed under the Apache License, Version 2.0
-Source: https://github.com/jboss-javassist/javassist
-```
-
-Apache-2.0 全文见 `licenses/LICENSE-Apache-2.0.txt`。
-
----
-
-## 10. LocalVQE / GGML / 模型权重 / LocalVQE, GGML and Model Weights
+> **桌面端已移除**：桌面端不再做任何语音降噪/回声消除处理，改为直接发送未经处理的
+> 麦克风原声。原先随前端分发的 Web 版 LocalVQE 资产（`localvqe.wasm`、`localvqe.js`、
+> `localvqe-worker.js`、`localvqe-bridge-worklet.js`、`localvqe-pi-v1-49k-f32.gguf`）
+> 以及纯 Rust 的 `sonora` APM 依赖均已从仓库与发布物中删除。本节现仅适用于 Android 端。
 
 | 组件 | 平台 | 许可证 | SHA-256 |
 | --- | --- | --- | --- |
 | `liblocalvqe.so` | Android | Apache-2.0（含 GGML，MIT） | `F89813078AE254854807BF2577F59CA42691CAE6E94C4DDFC01DFE2260EF2B51` |
-| `localvqe.wasm` | Web | Apache-2.0（含 GGML，MIT） | `C367083AF7E7D32C1F23D57605AC1B6A48B592A750FA5C39CA806AE8D3C46297` |
-| `localvqe.js` | Web | Apache-2.0 | `C34FB01E761D598025349564E9D41CEC516F9B6E89EA3FA2A2D41E8DEAAAAEEE` |
-| `localvqe-worker.js` | Web | Apache-2.0 | `8D415D7CD35A6C626C877A9841CAC8F8AF62B370EAC4D512DC60154F5E0E91F3` |
-| `localvqe-bridge-worklet.js` | Web | Apache-2.0 | `5CC288154122DE24003BCB6676E2000FA6AF59A3BAC80425B8C7393EA701D92A` |
-| `localvqe-pi-v1-49k-f32.gguf` | Web + Android | 模型权重，见下 | `0E0C82A8E9703E818B64DEDD0FC306394CF5BBB59FCEC1CCCA82099D352D0C26` |
+| `localvqe-pi-v1-49k-f32.gguf` | Android | 模型权重，见下 | `0E0C82A8E9703E818B64DEDD0FC306394CF5BBB59FCEC1CCCA82099D352D0C26` |
 
 - **LocalVQE**：Apache-2.0，https://github.com/localai-org/LocalVQE
   （全文：`licenses/LICENSE-Apache-2.0.txt`）
 - **GGML**：MIT，Copyright (c) 2023 Georgi Gerganov，https://github.com/ggerganov/ggml
-  （全文：`licenses/LICENSE-MIT.txt`）。`liblocalvqe.so` 与 `localvqe.wasm` 中包含
-  `ggml_*` 符号，即运行时静态包含 GGML。
+  （全文：`licenses/LICENSE-MIT.txt`）。`liblocalvqe.so` 中包含 `ggml_*` 符号，即运行时静态包含 GGML。
 - **模型权重**：GTCRN 结构，模型来源 https://huggingface.co/LocalAI-io/LocalVQE 。
   其训练数据来自 **ICASSP 2023 Deep Noise Suppression (DNS) Challenge**
   与 **AEC Challenge**（Microsoft，**CC BY 4.0**）。按 CC BY 4.0 要求保留数据集署名：
@@ -366,11 +346,11 @@ Apache-2.0 全文见 `licenses/LICENSE-Apache-2.0.txt`。
   https://creativecommons.org/licenses/by/4.0/
   ```
 
-- **安全说明**：音频增强全程在本地完成，麦克风与播放音频不会被上传。
+- **安全说明**：Android 端音频增强全程在本地完成，麦克风与播放音频不会被上传。
 
 ---
 
-## 11. 应用依赖 / Application Dependencies
+## 10. 应用依赖 / Application Dependencies
 
 以下为主要直接依赖；完整清单可分别用 `npm ls`、`cargo tree`、Gradle 依赖报告生成，
 其许可证文本随各自包分发。
@@ -396,7 +376,7 @@ GPL-2.0、GPL-3.0、LGPL-3.0、Wintun Prebuilt Binaries License。
 
 ---
 
-## 12. 商标与非官方声明 / Trademarks and Non-Affiliation
+## 11. 商标与非官方声明 / Trademarks and Non-Affiliation
 
 ```
 本项目不是官方 Minecraft 产品，未获 Mojang Studios 或 Microsoft 批准、认可、关联或背书。
@@ -411,7 +391,7 @@ Wintun / WireGuard 相关声明见 §7。
 
 ---
 
-## 13. 默认服务与元数据披露 / Default Services and Metadata Disclosure
+## 12. 默认服务与元数据披露 / Default Services and Metadata Disclosure
 
 使用**默认**配置时会连接以下由项目方或第三方运营的服务；自建部署可完全避免：
 
@@ -432,7 +412,7 @@ Wintun / WireGuard 相关声明见 §7。
 
 ---
 
-## 14. 维护承诺 / Maintenance Commitment
+## 13. 维护承诺 / Maintenance Commitment
 
 每次升级第三方组件时，MCTier 将同步更新本文件中的：版本号、commit SHA、修改状态、
 补丁文件与二进制 SHA-256，并在发布说明中一并记录。

@@ -17,6 +17,7 @@ import { parseLobbyInviteText, type LobbyInvite } from '../../services/lobby/lob
 import { useTranslation } from 'react-i18next';
 import { tl, getLanguage } from '../../i18n';
 import { startWindowDrag } from '../../utils/windowDrag';
+import { isSafeServerNode, isSafeSignalingServer } from '../../security/trustBoundary';
 import './LobbyForm.css';
 
 const { Title } = Typography;
@@ -288,7 +289,7 @@ const getServerNodes = (customNodes: CustomEasyTierNode[]) => {
   customNodes.forEach((node) => {
     const name = typeof node?.name === 'string' ? node.name.trim() : '';
     const address = typeof node?.address === 'string' ? node.address.trim() : '';
-    if (!name || !address || knownAddresses.has(address) || address === 'custom') return;
+    if (!name || !address || !isSafeServerNode(address) || knownAddresses.has(address) || address === 'custom') return;
     knownAddresses.add(address);
     nodes.push({
       value: address,
@@ -516,8 +517,15 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const applyImportedLobby = (invite: LobbyInvite & { playerName?: string; useDomain?: boolean }) => {
     const rawServerNode = invite.serverNode?.trim() || undefined;
     const legacyCustomSentinel = rawServerNode === 'custom';
-    const serverNode = legacyCustomSentinel ? undefined : rawServerNode;
-    const signalingServer = invite.signalingServer?.trim() || undefined;
+    const serverNode = legacyCustomSentinel
+      ? undefined
+      : rawServerNode && isSafeServerNode(rawServerNode)
+        ? rawServerNode
+        : undefined;
+    const rawSignalingServer = invite.signalingServer?.trim() || undefined;
+    const signalingServer = rawSignalingServer && isSafeSignalingServer(rawSignalingServer)
+      ? rawSignalingServer
+      : undefined;
     setTemporaryServerNode(serverNode);
     setTemporarySignalingServer(serverNode ? signalingServer : undefined);
     setShowCustomServer(legacyCustomSentinel ? true : false);
@@ -534,7 +542,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const handleSelectFavorite = (lobby: FavoriteLobby) => {
     applyImportedLobby({
       name: lobby.name,
-      password: lobby.password,
+      password: '',
       playerName: lobby.playerName,
       useDomain: lobby.useDomain,
       serverNode: lobby.serverNode,
@@ -546,7 +554,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const handleSelectRecent = (lobby: RecentLobby) => {
     applyImportedLobby({
       name: lobby.name,
-      password: lobby.password,
+      password: '',
       playerName: lobby.playerName,
       useDomain: lobby.useDomain,
       serverNode: lobby.serverNode,
@@ -554,12 +562,12 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
     });
   };
 
-  // 从公开广场加入：填入大厅名与密码（公开大厅自带密码），并自动同步房主使用的节点
+  // 从公开广场加入：公开大厅必须无密码，直接填入空密码。
   const handleSelectPublic = (lobby: PublicLobby) => {
     const hostNode = (lobby.serverNode || '').trim();
     applyImportedLobby({
       name: lobby.lobbyName,
-      password: lobby.password,
+      password: '',
       serverNode: hostNode || undefined,
       signalingServer: hostNode ? 'wss://mctier.pmhs.top/signaling' : undefined,
     });
@@ -578,7 +586,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
     // 旧版官方节点地址自动迁移到当前官方节点
     if (isLegacyOfficialServer(pref) || pref === REMOVED_QINGYUN_NODE) return DEFAULT_EASYTIER_SERVER;
     // 直接使用上次成功连上的节点地址（官方/备用/自定义节点）
-    return pref;
+    return isSafeServerNode(pref) ? pref : DEFAULT_EASYTIER_SERVER;
   })();
 
   const initialValues: Partial<LobbyFormValues> = {
@@ -627,8 +635,12 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         setPrivateServerConfig({
           usePrivateServer: settings.usePrivateServer || false,
           // 使用 ?? 运算符，只在 null/undefined 时使用默认值
-          privateEasytierServer: settings.privateEasytierServer ?? 'udp://us01.225284.xyz:11010',
-          privateSignalingServer: settings.privateSignalingServer ?? 'wss://mctier.pmhs.top/signaling',
+          privateEasytierServer: isSafeServerNode(settings.privateEasytierServer)
+            ? settings.privateEasytierServer
+            : 'udp://us01.225284.xyz:11010',
+          privateSignalingServer: isSafeSignalingServer(settings.privateSignalingServer)
+            ? settings.privateSignalingServer
+            : 'wss://mctier.pmhs.top/signaling',
         });
         
         // 加载自定义节点
@@ -642,8 +654,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         setCustomNodes(nodes);
         setServerNodes(getServerNodes(nodes));
         
-        console.log('已加载私有服务器配置:', settings);
-        console.log('已加载自定义节点:', nodes);
+        console.log('已加载私有服务器配置和自定义节点');
       } catch (error) {
         console.error('加载私有服务器配置失败:', error);
       }
@@ -704,7 +715,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       }
 
       const invite = parseLobbyInviteText(clipboardText);
-      if (invite && invite.name.length >= 4 && invite.password.length >= 8) {
+      if (invite && invite.name.length >= 4 && (invite.password.length === 0 || invite.password.length >= 8)) {
         applyImportedLobby(invite);
         message.success(
           invite.serverNode
@@ -797,10 +808,6 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         message.error(tl('大厅名称不能为空', 'Lobby name cannot be empty'));
         return;
       }
-      if (!lobbyPassword) {
-        message.error(tl('密码不能为空', 'Password cannot be empty'));
-        return;
-      }
       if (!values.playerName?.trim()) {
         message.error(tl('玩家名称不能为空', 'Player name cannot be empty'));
         return;
@@ -860,6 +867,11 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         console.log('========================================');
       }
 
+      if (!isSafeServerNode(serverNode) || serverNode === 'custom' || !isSafeSignalingServer(signalingServer)) {
+        message.error(tl('服务器地址无效，请检查后重试', 'Invalid server address. Check it and retry.'));
+        return;
+      }
+
       const commandName = mode === 'create' ? 'create_lobby' : 'join_lobby';
 
       // 记录本次实际使用的节点地址，供公开广场发布时同步给加入者
@@ -903,15 +915,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       }
       
       console.log('准备调用后端命令:', commandName);
-      console.log('参数:', {
-        name: lobbyName,
-        playerName: values.playerName.trim(),
-        playerId: currentPlayerId,
-        serverNode: serverNode,
-        signalingServer: signalingServer,
-        useDomain: values.useDomain === true,
-        virtualDomain: virtualDomain,
-      });
+      console.log('连接参数已通过前端校验');
       
       // 调用后端命令
       const lobby = await invoke<Lobby>(commandName, {
@@ -925,7 +929,11 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         virtualDomain: virtualDomain, // 传递虚拟域名
       });
       
-      console.log('✅ 后端命令调用成功，返回的大厅信息:', lobby);
+      console.log('✅ 后端命令调用成功，已收到大厅信息:', {
+        hasLobby: !!lobby,
+        lobbyName: lobby?.name,
+        hasPassword: !!lobby?.password,
+      });
 
       // 保存玩家名称到前端store
       const { updateConfig } = useAppStore.getState();
@@ -969,7 +977,6 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       try {
         recentService.recordLobby({
           name: lobbyName,
-          password: lobbyPassword,
           playerName: values.playerName.trim(),
           useDomain: values.useDomain === true,
           serverNode,
@@ -1348,15 +1355,15 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
             </Form.Item>
 
             <Form.Item
-              label={mode === 'create' ? tl('设置密码', 'Set Password') : tl('输入密码', 'Enter Password')}
+              label={tl('密码', 'Password')}
               name="password"
               rules={[
-                { required: true, message: tl('请输入密码', 'Please enter a password') },
-                { whitespace: true, message: tl('密码不能为空白字符', 'Password cannot be only whitespace') },
-                { min: 8, max: 32, message: tl('密码长度为 8-32 个字符', 'Password must be 8-32 characters') },
                 {
                   validator: (_, value) => {
                     if (!value) return Promise.resolve();
+                    if (value.trim() !== value || value.length < 8 || value.length > 32) {
+                      return Promise.reject(new Error(tl('密码留空表示无密码，否则必须为 8-32 个字符', 'Leave blank for no password; otherwise use 8-32 characters')));
+                    }
                     const hasLetter = /[a-zA-Z]/.test(value);
                     const hasDigit = /[0-9]/.test(value);
                     if (!hasLetter) {
@@ -1371,11 +1378,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
               ]}
             >
               <LobbyPasswordInput
-                placeholder={
-                  mode === 'create'
-                    ? tl('设置密码（至少8个字符，包含字母和数字）', 'Set a password (min 8 chars, letters and digits)')
-                    : tl('输入房主提供的密码', 'Enter the password supplied by the host')
-                }
+                placeholder={tl('留空创建无密码大厅，或输入 8-32 位密码', 'Leave blank for no password, or enter 8-32 characters')}
                 disabled={loading}
                 autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
                 autoCapitalize="none"

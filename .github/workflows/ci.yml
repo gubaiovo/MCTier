@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -27,7 +28,7 @@ permissions:
 
 concurrency:
   group: mctier-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/master' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
 
 defaults:
   run:
@@ -88,7 +89,7 @@ jobs:
           elif [[ "$EVENT_NAME" == "schedule" ]]; then
             channel="nightly-$(date -u +%Y%m%d)"
             retention_days="7"
-          elif [[ "$GIT_REF" == "refs/heads/master" ]]; then
+          elif [[ "$GIT_REF" == "refs/heads/master" || "$GIT_REF" == "refs/heads/main" ]]; then
             channel="dev-${GIT_SHA:0:7}"
             retention_days="14"
           else
@@ -113,6 +114,7 @@ jobs:
         with:
           ref: ${{ steps.resolve.outputs.checkout_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify tagged versions are synchronized
         if: steps.resolve.outputs.tag != ''
@@ -151,6 +153,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -187,6 +190,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
 
       - name: Install stable Rust
         run: |
@@ -218,6 +222,71 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
+  linux:
+    name: Linux (deps / check / test / shellcheck)
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+          key: linux
+
+      - name: Install system dependencies
+        # Tauri 2 在 Linux 上需要 WebKitGTK + GTK3；libcap2-bin 提供 setcap/getcap，
+        # 运行期用来给 easytier 二进制授予 TUN 能力（应用本体不提权）。
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf libssl-dev pkg-config libcap2-bin unzip
+
+      - name: Fetch third-party binaries (Linux)
+        # resource_manager.rs 在 Linux 上 include_bytes! 内嵌 EasyTier 的 Linux 二进制，
+        # 这些文件不入库，编译前必须先获取并校验 SHA-256。
+        run: ./MCTier-Linux/scripts/fetch-binaries.sh
+
+      - name: Check
+        working-directory: src-tauri
+        # Linux 侧的 cfg 分支只有在 Linux 目标上才会被编译，Windows 任务覆盖不到，
+        # 因此这一步是 Linux 代码唯一的真实编译验证。
+        run: cargo check --lib --tests
+
+      - name: Unit tests
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - name: Clippy
+        working-directory: src-tauri
+        # 与 Windows 任务一致：存量告警先保持可见，暂不阻塞。
+        continue-on-error: true
+        run: cargo clippy --lib --tests
+
+      - name: Shellcheck Linux scripts
+        # 这些脚本会带 sudo/pkexec 执行，未加引号的变量展开可能造成实际危害，必须阻塞。
+        run: |
+          set -e
+          sudo apt-get install -y shellcheck
+          shellcheck MCTier-Linux/scripts/*.sh
+
+      - name: Validate desktop entry and polkit policy
+        run: |
+          set -e
+          sudo apt-get install -y desktop-file-utils libxml2-utils
+          desktop-file-validate MCTier-Linux/packaging/mctier.desktop
+          xmllint --noout MCTier-Linux/packaging/com.mctier.app.policy
+
   compliance:
     name: License compliance
     needs: metadata
@@ -226,6 +295,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
 
       - name: Verify notices and corresponding source material
         run: |
@@ -239,7 +309,7 @@ jobs:
                       licenses/LICENSE-Wintun.txt; do
             test -f "$file" || { echo "missing $file" >&2; exit 1; }
           done
-          for component in EasyTier Wintun WinDivert Npcap Javassist LocalVQE GGML; do
+          for component in EasyTier Wintun WinDivert Npcap LocalVQE GGML; do
             grep -q "$component" THIRD_PARTY_NOTICES.md || {
               echo "$component missing from THIRD_PARTY_NOTICES.md" >&2
               exit 1
@@ -256,6 +326,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
 
       - name: Install stable Rust
         run: |
@@ -263,7 +334,9 @@ jobs:
           rustup default stable
 
       - name: Install audit tools
-        run: cargo install cargo-audit cargo-deny --locked
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
 
       - name: cargo audit (upstream findings remain visible)
         continue-on-error: true
@@ -299,6 +372,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -542,6 +616,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.metadata.outputs.checkout_ref }}
+          persist-credentials: false
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
@@ -636,6 +711,7 @@ jobs:
       - metadata
       - frontend
       - rust
+      - linux
       - compliance
       - dependency-audit
       - desktop

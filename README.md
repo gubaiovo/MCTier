@@ -144,7 +144,6 @@ MCTier 基于 EasyTier 与 WebRTC，用来把不同网络环境下的设备组�
 
 - **Minecraft 世界自动发现**：扫描大厅成员开放的 Minecraft 世界（MOTD/版本/在线人数/延迟），免输 IP 自动注入本机局域网列表一键加入。
 - **游戏快连**：内置常见联机游戏端口预设，自动生成“虚拟 IP:端口”直连地址一键复制。
-- **Minecraft 联机助手**：检测 Minecraft 安装路径与版本，提供局域网联机图文指南，并可自动为主流启动器关闭局域网正版验证。
 
 ### 进阶与其他
 
@@ -327,7 +326,7 @@ Source: https://github.com/EasyTier/EasyTier
 - [docs/android/rebuild-with-modified-easytier.md](docs/android/rebuild-with-modified-easytier.md) — 用自行修改的 EasyTier 重新构建 Android 版
 - [licenses/](licenses/) — 各第三方许可证全文（LGPL-3.0、GPL-3.0、GPL-2.0、Apache-2.0、MIT、BSD-3-Clause、Wintun）
 
-`THIRD_PARTY_NOTICES.md` 覆盖 EasyTier、Wintun、WinDivert、Npcap、Javassist、
+`THIRD_PARTY_NOTICES.md` 覆盖 EasyTier、Wintun、WinDivert、Npcap、
 LocalVQE / GGML / 模型权重、WebRTC 及各应用级依赖的版本、SHA-256、许可证与修改状态。
 
 ### 商标与非官方声明

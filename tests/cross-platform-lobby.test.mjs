@@ -77,7 +77,10 @@ test('transient signaling failures preserve the virtual LAN and retry membership
 test('lobby success is announced only after signaling registration and initial metadata is retained', () => {
   const preRegistrationSuccess = lobbyForm.slice(
     lobbyForm.indexOf('setLobby({ ...lobby, serverNode, signalingServer })'),
-    lobbyForm.indexOf('} catch (error) {', lobbyForm.indexOf('setLobby({ ...lobby, serverNode, signalingServer })'))
+    lobbyForm.indexOf(
+      '} catch (error) {',
+      lobbyForm.indexOf('setLobby({ ...lobby, serverNode, signalingServer })')
+    )
   );
 
   assert.doesNotMatch(preRegistrationSuccess, /message\.success/);
@@ -87,8 +90,8 @@ test('lobby success is announced only after signaling registration and initial m
 });
 
 test('Android normalizes shared credentials and rolls back a rejected registration', () => {
-  assert.match(androidRepository, /val normalizedLobbyName = lobbyName\.trim\(\)/);
-  assert.match(androidRepository, /val normalizedPassword = password\.trim\(\)/);
+  assert.match(androidRepository, /val safeLobbyName = lobbyName\.trim\(\)/);
+  assert.match(androidRepository, /val safePassword = password\.trim\(\)/);
   assert.match(androidRepository, /"register-error" ->/);
   assert.match(androidRepository, /leaveLobby\(\)/);
   assert.match(androidRepository, /state = AppConnectionState\.Error/);
@@ -118,6 +121,7 @@ test('Android buffers initial signaling events until its single roster consumer 
 
 test('EasyTier IP parsing ignores unrelated private addresses from peer logs', () => {
   assert.match(networkService, /if is_virtual_ip_line && !is_excluded/);
+  assert.match(networkService, /Self::is_mctier_virtual_ip\(&ip\)/);
 });
 
 test('macOS password editing avoids a native secure-field focus transition', () => {

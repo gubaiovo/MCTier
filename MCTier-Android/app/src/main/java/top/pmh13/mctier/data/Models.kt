@@ -8,6 +8,11 @@ const val RemovedQingyunNode = "wss://mctiers.pmhs.top"
 const val DefaultSignalingServer = "wss://mctier.pmhs.top/signaling"
 const val FileSharePort = 14539
 const val ChatServerPort = 14540
+const val ChatTokenHeader = "x-mctier-chat-token"
+const val ChatTokenHexLength = 64
+const val ChatMaxHistoryMessages = 1000
+const val ChatMaxHistoryBytes = 4 * 1024 * 1024
+const val ChatMaxHttpBodyBytes = 2 * 1024 * 1024
 const val AppClientVersion = "2.8.0"
 
 enum class AppConnectionState { Idle, Connecting, InLobby, Error }
@@ -154,6 +159,9 @@ data class UserSettings(
 @Serializable
 data class SignalingEnvelope(
     val type: String,
+    val lobbyId: String? = null,
+    val chatToken: String? = null,
+    val chatTokenEpoch: Long? = null,
     val from: String? = null,
     val to: String? = null,
     val clientId: String? = null,
@@ -245,6 +253,13 @@ data class ChatWireMessage(
     @SerialName("image_data") val imageData: List<Int>? = null, // 图片字节(0~255)
 )
 
+/** 权威聊天身份：playerId/name 来自已认证信令快照，virtualIp 用于 TCP 源地址绑定。 */
+data class ChatPeerIdentity(
+    val playerId: String,
+    val playerName: String,
+    val virtualIp: String,
+)
+
 /** P2P 聊天发送请求体（与桌面端 SendMessageRequest 对齐） */
 @Serializable
 data class ChatSendRequest(
@@ -298,7 +313,6 @@ data class PublicLobbyWire(
     @SerialName("maxPlayers") val maxPlayers: Int? = null,
     @SerialName("hostName") val hostName: String = "",
     val description: String = "",
-    val password: String = "",
     @SerialName("serverNode") val serverNode: String = "",
 )
 
@@ -317,6 +331,57 @@ data class FavoriteLobby(
 /** 用户自定义 EasyTier 节点（本地存储，可增删改） */
 @Serializable
 data class CustomNode(val name: String, val address: String)
+
+/**
+ * 用户共享节点（社区投稿，与桌面端 CommunityNodeInfo 对齐）。
+ *
+ * 存活探测与「失效超过 1 天自动移除」都由信令服务器负责，客户端只做展示与投稿。
+ * [lastOkAt] 是最近一次探测成功的 Unix 秒，服务器据此淘汰节点。
+ */
+@Serializable
+data class CommunityNodeWire(
+    val name: String,
+    val address: String,
+    val submitter: String? = null,
+    @SerialName("submittedAt") val submittedAt: Long = 0,
+    @SerialName("lastOkAt") val lastOkAt: Long = 0,
+    val online: Boolean = false,
+    @SerialName("latencyMs") val latencyMs: Long? = null,
+)
+
+/** 投稿共享节点请求（community-node-submit） */
+@Serializable
+data class CommunityNodeSubmitWire(
+    val type: String = "community-node-submit",
+    val name: String,
+    val address: String,
+    val submitter: String? = null,
+)
+
+/** 投稿结果（community-node-submit-result） */
+@Serializable
+data class CommunityNodeSubmitResultWire(
+    val type: String = "",
+    val ok: Boolean = false,
+    val message: String = "",
+    val node: CommunityNodeWire? = null,
+)
+
+/** 共享节点列表响应（community-node-list-response） */
+@Serializable
+data class CommunityNodeListWire(
+    val type: String = "",
+    val nodes: List<CommunityNodeWire> = emptyList(),
+)
+
+/** 服务器侧的自动淘汰阈值（1 天），仅用于前端「还剩多久被移除」文案 */
+const val CommunityNodeMaxOfflineSecs: Long = 24 * 60 * 60
+
+/** 共享节点名称长度上限（与信令服务器 COMMUNITY_NODE_NAME_MAX_LEN 一致） */
+const val CommunityNodeNameMaxLen: Int = 32
+
+/** 共享节点地址长度上限（与信令服务器 COMMUNITY_NODE_ADDRESS_MAX_LEN 一致） */
+const val CommunityNodeAddressMaxLen: Int = 128
 
 /** 待办事项（房间工具，多人协同同步；字段名与桌面端一致） */
 @Serializable
