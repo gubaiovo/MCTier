@@ -202,15 +202,13 @@ jobs:
       - name: Fetch pinned Windows runtime binaries
         run: .\scripts\fetch-binaries.ps1
 
-      - name: Format check (legacy findings remain visible)
-        continue-on-error: true
+      - name: Rust format check
         working-directory: src-tauri
         run: cargo fmt --all -- --check
 
-      - name: Clippy (legacy findings remain visible)
-        continue-on-error: true
+      - name: Clippy
         working-directory: src-tauri
-        run: cargo clippy --lib --tests
+        run: cargo clippy --lib --tests -- -D warnings
 
       - name: Compile all Rust targets
         working-directory: src-tauri
@@ -267,9 +265,7 @@ jobs:
 
       - name: Clippy
         working-directory: src-tauri
-        # 与 Windows 任务一致：存量告警先保持可见，暂不阻塞。
-        continue-on-error: true
-        run: cargo clippy --lib --tests
+        run: cargo clippy --lib --tests -- -D warnings
 
       - name: Shellcheck Linux scripts
         # 这些脚本会带 sudo/pkexec 执行，未加引号的变量展开可能造成实际危害，必须阻塞。

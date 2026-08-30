@@ -85,13 +85,7 @@ impl ResourceManager {
             }
         }
 
-        for candidate in candidates {
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
-
-        None
+        candidates.into_iter().find(|candidate| candidate.exists())
     }
 
     /// 获取运行时目录（用于存放提取的二进制文件）
@@ -208,21 +202,13 @@ impl ResourceManager {
                 "开发模式 - 未找到外部 {}，回退到内嵌资源提取",
                 EASYTIER_CORE_FILENAME
             );
-            return Self::extract_binary(
-                app_handle,
-                EASYTIER_CORE_FILENAME,
-                EASYTIER_CORE_BYTES,
-            );
+            Self::extract_binary(app_handle, EASYTIER_CORE_FILENAME, EASYTIER_CORE_BYTES)
         }
 
         // 在生产模式下，从嵌入的二进制文件中提取
         #[cfg(not(debug_assertions))]
         {
-            Self::extract_binary(
-                app_handle,
-                EASYTIER_CORE_FILENAME,
-                EASYTIER_CORE_BYTES,
-            )
+            Self::extract_binary(app_handle, EASYTIER_CORE_FILENAME, EASYTIER_CORE_BYTES)
         }
     }
 
@@ -241,19 +227,11 @@ impl ResourceManager {
             if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CLI_FILENAME) {
                 return Ok(path);
             }
-            return Self::extract_binary(
-                app_handle,
-                EASYTIER_CLI_FILENAME,
-                EASYTIER_CLI_BYTES,
-            );
+            Self::extract_binary(app_handle, EASYTIER_CLI_FILENAME, EASYTIER_CLI_BYTES)
         }
         #[cfg(not(debug_assertions))]
         {
-            Self::extract_binary(
-                app_handle,
-                EASYTIER_CLI_FILENAME,
-                EASYTIER_CLI_BYTES,
-            )
+            Self::extract_binary(app_handle, EASYTIER_CLI_FILENAME, EASYTIER_CLI_BYTES)
         }
     }
 
@@ -263,7 +241,7 @@ impl ResourceManager {
             "当前桌面平台尚未提供 EasyTier CLI 二进制".to_string(),
         ))
     }
-    
+
     /// 获取 Packet.dll 的路径。
     ///
     /// 公开构建不会内嵌 Npcap 的专有 DLL，而是使用用户通过官方安装器安装的副本。
@@ -274,7 +252,7 @@ impl ResourceManager {
             if let Some(path) = Self::find_debug_binary(app_handle, "Packet.dll") {
                 return Ok(path);
             }
-            return Self::extract_binary(app_handle, "Packet.dll", PACKET_DLL_BYTES);
+            Self::extract_binary(app_handle, "Packet.dll", PACKET_DLL_BYTES)
         }
 
         #[cfg(not(debug_assertions))]
@@ -285,12 +263,14 @@ impl ResourceManager {
 
     #[cfg(all(target_os = "windows", not(feature = "bundled-npcap")))]
     pub fn get_packet_dll_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
-        let windows_dir = std::env::var_os("WINDIR").map(PathBuf::from).ok_or_else(|| {
-            AppError::ConfigError(
-                "无法定位 Windows 系统目录；请从 https://npcap.com 安装 Npcap 后重试"
-                    .to_string(),
-            )
-        })?;
+        let windows_dir = std::env::var_os("WINDIR")
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                AppError::ConfigError(
+                    "无法定位 Windows 系统目录；请从 https://npcap.com 安装 Npcap 后重试"
+                        .to_string(),
+                )
+            })?;
 
         Self::find_installed_packet_dll(&windows_dir).ok_or_else(|| {
             AppError::ConfigError(
@@ -303,7 +283,10 @@ impl ResourceManager {
     #[cfg(all(target_os = "windows", not(feature = "bundled-npcap")))]
     fn find_installed_packet_dll(windows_dir: &std::path::Path) -> Option<PathBuf> {
         [
-            windows_dir.join("System32").join("Npcap").join("Packet.dll"),
+            windows_dir
+                .join("System32")
+                .join("Npcap")
+                .join("Packet.dll"),
             windows_dir.join("System32").join("Packet.dll"),
         ]
         .into_iter()
@@ -317,7 +300,7 @@ impl ResourceManager {
             if let Some(path) = Self::find_debug_binary(app_handle, "wintun.dll") {
                 return Ok(path);
             }
-            return Self::extract_binary(app_handle, "wintun.dll", WINTUN_DLL_BYTES);
+            Self::extract_binary(app_handle, "wintun.dll", WINTUN_DLL_BYTES)
         }
 
         #[cfg(not(debug_assertions))]
@@ -333,7 +316,7 @@ impl ResourceManager {
             if let Some(path) = Self::find_debug_binary(app_handle, "WinDivert64.sys") {
                 return Ok(path);
             }
-            return Self::extract_binary(app_handle, "WinDivert64.sys", WINDIVERT_SYS_BYTES);
+            Self::extract_binary(app_handle, "WinDivert64.sys", WINDIVERT_SYS_BYTES)
         }
 
         #[cfg(not(debug_assertions))]
@@ -391,10 +374,11 @@ impl ResourceManager {
 
 #[cfg(test)]
 mod tests {
+    use super::{EASYTIER_CLI_FILENAME, EASYTIER_CORE_FILENAME};
+
     #[test]
-    fn test_resource_manager_exists() {
-        // 这个测试只是确保模块可以编译
-        // 实际的路径测试需要在集成测试中进行
-        assert!(true);
+    fn embedded_binary_filenames_are_present() {
+        assert!(!EASYTIER_CORE_FILENAME.is_empty());
+        assert!(!EASYTIER_CLI_FILENAME.is_empty());
     }
 }

@@ -501,12 +501,83 @@ export class WebRTCClient {
           try {
             if (typeof event.data !== 'string' || event.data.length > 512 * 1024) return;
             const message = JSON.parse(event.data);
-            this.websocketMessageQueue = this.websocketMessageQueue
-              .then(() => this.handleWebSocketMessage(message))
-              .catch((error) => console.error('WebSocket message processing failed:', error));
 
             if (message.type === 'register-success') {
-              acceptRegistration();
+              const hasAuthenticatedLobbyState =
+                isSafeIdentifier(message.lobbyId) &&
+                isSafeChatToken(message.chatToken) &&
+                typeof message.chatTokenEpoch === 'number' &&
+                Number.isSafeInteger(message.chatTokenEpoch) &&
+                message.chatTokenEpoch > 0;
+              if (!hasAuthenticatedLobbyState) {
+                const protocolError = new SignalingRegistrationError(
+                  tl(
+                    '信令服务器协议过旧，缺少大厅认证信息；请更新信令服务器后重试',
+                    'The signaling server protocol is outdated and lacks lobby authentication; update the server and retry'
+                  )
+                );
+                rejectRegistration(protocolError);
+                console.error('❌ 信令服务器返回了不受支持的旧版注册响应');
+                try {
+                  socket.close(1002, 'outdated-signaling-protocol');
+                } catch {
+                  /* ignore */
+                }
+                return;
+              }
+            }
+
+            const messageProcessing = this.websocketMessageQueue.then(() =>
+              this.handleWebSocketMessage(message)
+            );
+            this.websocketMessageQueue = messageProcessing.catch((error) =>
+              console.error('WebSocket message processing failed:', error)
+            );
+
+            if (message.type === 'register-success') {
+              // 只有权威注册消息完成聊天/文件认证初始化后，才允许界面进入大厅。
+              // 这也保证随后排队的 players-list 会由已经初始化的会话消费。
+              void messageProcessing
+                .then(() => {
+                  if (
+                    this.websocket === socket &&
+                    this.chatToken === message.chatToken &&
+                    this.chatTokenEpoch === message.chatTokenEpoch
+                  ) {
+                    acceptRegistration();
+                    return;
+                  }
+
+                  rejectRegistration(
+                    new SignalingRegistrationError(
+                      tl(
+                        '信令大厅认证初始化失败，请检查服务器版本后重试',
+                        'Lobby authentication initialization failed; check the server version and retry'
+                      )
+                    )
+                  );
+                  try {
+                    socket.close(1011, 'signaling-auth-initialization-failed');
+                  } catch {
+                    /* ignore */
+                  }
+                })
+                .catch((error) => {
+                  console.error('❌ 初始化信令大厅认证失败:', error);
+                  rejectRegistration(
+                    new SignalingRegistrationError(
+                      tl(
+                        '信令大厅认证初始化失败，请检查服务器版本后重试',
+                        'Lobby authentication initialization failed; check the server version and retry'
+                      )
+                    )
+                  );
+                  try {
+                    socket.close(1011, 'signaling-auth-initialization-failed');
+                  } catch {
+                    /* ignore */
+                  }
+                });
             } else if (message.type === 'register-error') {
               const detail =
                 typeof message.message === 'string' && message.message.trim()

@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, BufReader};
 #[cfg(target_os = "macos")]
 use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -228,7 +228,9 @@ text returned of result
                     }
 
                     let password = String::from_utf8(prompt.stdout)
-                        .map_err(|_| AppError::ProcessError("macOS 管理员密码格式无效".to_string()))?
+                        .map_err(|_| {
+                            AppError::ProcessError("macOS 管理员密码格式无效".to_string())
+                        })?
                         .trim_end_matches(&['\r', '\n'][..])
                         .to_string();
                     if password.is_empty() {
@@ -282,9 +284,8 @@ text returned of result
             }
         }
 
-        cmd.spawn().map_err(|e| {
-            AppError::ProcessError(format!("启动 EasyTier 进程失败: {}", e))
-        })
+        cmd.spawn()
+            .map_err(|e| AppError::ProcessError(format!("启动 EasyTier 进程失败: {}", e)))
     }
 
     /// 应用 EasyTier 高级配置到命令行
@@ -428,7 +429,11 @@ text returned of result
         // 在 macOS 上会自动选择空闲接口，传入 Windows 风格的
         // `MCTier_Net` 会直接导致 TUN 创建失败，因此始终让系统分配。
         #[cfg(target_os = "macos")]
-        if config.dev_name.as_deref().is_some_and(|name| !name.is_empty()) {
+        if config
+            .dev_name
+            .as_deref()
+            .is_some_and(|name| !name.is_empty())
+        {
             log::info!("  ℹ️ macOS 忽略自定义 TUN 设备名称，使用系统分配的 utunN");
         }
 
@@ -784,7 +789,9 @@ text returned of result
 
         #[cfg(not(windows))]
         {
-            log::info!("Unix 平台：EasyTier 使用系统 TUN（Linux 为 /dev/net/tun），无需 Windows 驱动文件");
+            log::info!(
+                "Unix 平台：EasyTier 使用系统 TUN（Linux 为 /dev/net/tun），无需 Windows 驱动文件"
+            );
         }
 
         // 生成唯一的实例名称（基于时间戳和随机数）
@@ -1353,13 +1360,17 @@ text returned of result
     fn virtual_nic_error_message() -> String {
         #[cfg(windows)]
         {
-            return "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string();
+            "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string()
         }
         #[cfg(target_os = "macos")]
         {
-            return "虚拟网卡创建失败：macOS 需要管理员授权来创建 utun 接口。请在系统密码对话框中授权，并确认未启用会独占 VPN 的网络过滤器；若仍失败，请重启 MCTier 后重试".to_string();
+            "虚拟网卡创建失败：macOS 需要管理员授权来创建 utun 接口。请在系统密码对话框中授权，并确认未启用会独占 VPN 的网络过滤器；若仍失败，请重启 MCTier 后重试".to_string()
         }
-        "虚拟网卡创建失败：请确认当前系统支持 TUN，并授予 MCTier 所需的网络权限后重试".to_string()
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            "虚拟网卡创建失败：请确认当前系统支持 TUN，并授予 MCTier 所需的网络权限后重试"
+                .to_string()
+        }
     }
 
     /// 根据进程退出码推断常见失败原因，返回更可读的错误说明
@@ -1376,9 +1387,10 @@ text returned of result
         };
 
         // 先在最近日志里找"虚拟网卡创建失败"这类最关键的具体原因
-        if recent_stderr.iter().any(|l| {
-            l.contains("tun device error") || l.contains("Failed to create adapter")
-        }) {
+        if recent_stderr
+            .iter()
+            .any(|l| l.contains("tun device error") || l.contains("Failed to create adapter"))
+        {
             return Self::virtual_nic_error_message();
         }
 
@@ -1612,9 +1624,12 @@ text returned of result
 
                 // 检查是否是 TUN 设备创建失败
                 if line.contains("tun device error") || line.contains("Failed to create adapter") {
-                    log::error!("TUN 设备创建失败，可能是缺少平台驱动、权限不足或被系统网络过滤器拦截");
+                    log::error!(
+                        "TUN 设备创建失败，可能是缺少平台驱动、权限不足或被系统网络过滤器拦截"
+                    );
                     *is_running.lock().await = false;
-                    *status.lock().await = ConnectionStatus::Error(Self::virtual_nic_error_message());
+                    *status.lock().await =
+                        ConnectionStatus::Error(Self::virtual_nic_error_message());
                 }
             }
         }

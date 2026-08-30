@@ -1382,10 +1382,7 @@ impl<W: std::io::Write> std::io::Write for SizeLimitedWriter<W> {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
         let available = self.limit.saturating_sub(self.position);
         if buffer.len() as u64 > available {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                ZIP_OUTPUT_LIMIT_ERROR,
-            ));
+            return Err(std::io::Error::other(ZIP_OUTPUT_LIMIT_ERROR));
         }
 
         let written = self.inner.write(buffer)?;
@@ -1403,10 +1400,7 @@ impl<W: std::io::Seek> std::io::Seek for SizeLimitedWriter<W> {
     fn seek(&mut self, position: std::io::SeekFrom) -> std::io::Result<u64> {
         let position = self.inner.seek(position)?;
         if position > self.limit {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                ZIP_OUTPUT_LIMIT_ERROR,
-            ));
+            return Err(std::io::Error::other(ZIP_OUTPUT_LIMIT_ERROR));
         }
         self.position = position;
         Ok(position)

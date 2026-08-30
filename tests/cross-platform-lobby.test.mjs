@@ -50,6 +50,11 @@ test('desktop waits for an authoritative signaling registration result', () => {
 
   assert.match(connectBlock, /message\.type === 'register-success'/);
   assert.match(connectBlock, /acceptRegistration\(\)/);
+  assert.match(connectBlock, /isSafeChatToken\(message\.chatToken\)/);
+  assert.match(connectBlock, /message\.chatTokenEpoch > 0/);
+  assert.match(connectBlock, /const messageProcessing = this\.websocketMessageQueue\.then/);
+  assert.match(connectBlock, /this\.chatToken === message\.chatToken/);
+  assert.match(connectBlock, /信令服务器协议过旧，缺少大厅认证信息/);
   assert.match(connectBlock, /message\.type === 'register-error'/);
   assert.match(connectBlock, /rejectRegistration\(\s*new SignalingRegistrationError/);
 
@@ -117,6 +122,29 @@ test('Android buffers initial signaling events until its single roster consumer 
   assert.match(androidSignaling, /Channel<SignalingEnvelope>/);
   assert.match(androidSignaling, /receiveAsFlow\(\)/);
   assert.doesNotMatch(androidSignaling, /MutableSharedFlow<SignalingEnvelope>/);
+});
+
+test('tokenless legacy signaling cannot masquerade as a successful lobby join', () => {
+  assert.match(androidRepository, /信令服务器协议过旧，缺少大厅认证信息/);
+  assert.match(androidRepository, /!isValidChatToken\(token\) \|\| epoch <= 0L/);
+
+  const connectBlock = desktopRtc.slice(
+    desktopRtc.indexOf('private async connectToSignalingServer()'),
+    desktopRtc.indexOf('private sendRegistration()')
+  );
+  const validationIndex = connectBlock.indexOf('isSafeChatToken(message.chatToken)');
+  const processingIndex = connectBlock.indexOf('const messageProcessing');
+  const acceptIndex = connectBlock.lastIndexOf('acceptRegistration()');
+
+  assert.ok(validationIndex >= 0, 'desktop must validate the lobby token');
+  assert.ok(
+    processingIndex > validationIndex,
+    'legacy registration must be rejected before queuing'
+  );
+  assert.ok(
+    acceptIndex > processingIndex,
+    'registration succeeds only after authenticated processing'
+  );
 });
 
 test('EasyTier IP parsing ignores unrelated private addresses from peer logs', () => {

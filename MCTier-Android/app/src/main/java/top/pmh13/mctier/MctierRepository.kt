@@ -1526,8 +1526,22 @@ class MctierRepository(private val context: Context) {
                 val lobbyId = message.lobbyId
                 val token = message.chatToken
                 val epoch = message.chatTokenEpoch ?: 0L
-                if (lobbyId.isNullOrBlank() || !isValidChatToken(token) || epoch <= 0L) {
-                    rejectChatProtocol(L("聊天认证信息无效", "Invalid chat authentication state"))
+                if (lobbyId.isNullOrBlank()) {
+                    rejectChatProtocol(
+                        L(
+                            "信令服务器返回的大厅身份无效",
+                            "The signaling server returned an invalid lobby identity",
+                        ),
+                    )
+                    return
+                }
+                if (!isValidChatToken(token) || epoch <= 0L) {
+                    rejectChatProtocol(
+                        L(
+                            "信令服务器协议过旧，缺少大厅认证信息；请更新信令服务器后重试",
+                            "The signaling server protocol is outdated and lacks lobby authentication; update the server and retry",
+                        ),
+                    )
                     return
                 }
                 if (chatLobbyId != null && chatLobbyId != lobbyId) {
