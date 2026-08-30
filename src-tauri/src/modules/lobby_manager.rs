@@ -334,6 +334,7 @@ impl LobbyManager {
     /// # 返回
     /// * `Ok(Lobby)` - 成功创建的大厅信息
     /// * `Err(LobbyError)` - 创建失败
+    ///
     /// 创建大厅（带配置参数，避免死锁）
     ///
     /// # 参数
@@ -352,6 +353,8 @@ impl LobbyManager {
     /// # 返回
     /// * `Ok(Lobby)` - 成功创建的大厅信息
     /// * `Err(LobbyError)` - 创建失败
+    // The lobby model is exposed as independent Tauri command parameters.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_lobby_with_config(
         &mut self,
         name: String,
@@ -483,6 +486,7 @@ impl LobbyManager {
     /// # 返回
     /// * `Ok(Lobby)` - 成功创建的大厅信息
     /// * `Err(LobbyError)` - 创建失败
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_lobby(
         &mut self,
         name: String,
@@ -608,6 +612,7 @@ impl LobbyManager {
     /// # 返回
     /// * `Ok(Lobby)` - 成功加入的大厅信息
     /// * `Err(LobbyError)` - 加入失败
+    ///
     /// 加入大厅（带配置参数，避免死锁）
     ///
     /// # 参数
@@ -626,6 +631,8 @@ impl LobbyManager {
     /// # 返回
     /// * `Ok(Lobby)` - 成功加入的大厅信息
     /// * `Err(LobbyError)` - 加入失败
+    // The lobby model is exposed as independent Tauri command parameters.
+    #[allow(clippy::too_many_arguments)]
     pub async fn join_lobby_with_config(
         &mut self,
         name: String,
@@ -752,6 +759,7 @@ impl LobbyManager {
     /// # 返回
     /// * `Ok(Lobby)` - 成功加入的大厅信息
     /// * `Err(LobbyError)` - 加入失败
+    #[allow(clippy::too_many_arguments)]
     pub async fn join_lobby(
         &mut self,
         name: String,
@@ -949,7 +957,7 @@ impl LobbyManager {
         let mut players: Vec<Player> = self.players.values().cloned().collect();
 
         // 按加入时间排序
-        players.sort_by(|a, b| a.joined_at.cmp(&b.joined_at));
+        players.sort_by_key(|player| player.joined_at);
 
         players
     }

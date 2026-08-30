@@ -458,7 +458,7 @@ mod tests {
 
         assert_eq!(deserialized.message, "测试错误");
         assert_eq!(deserialized.code, Some("ERR_001".to_string()));
-        assert_eq!(deserialized.recoverable, true);
+        assert!(deserialized.recoverable);
         assert_eq!(deserialized.timestamp, 1234567890);
     }
 
@@ -489,7 +489,7 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: MicStatusChangeEvent = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.enabled, true);
+        assert!(deserialized.enabled);
         assert_eq!(deserialized.timestamp, 1234567890);
     }
 

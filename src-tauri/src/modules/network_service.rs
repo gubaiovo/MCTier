@@ -660,6 +660,8 @@ text returned of result
     /// # 返回
     /// * `Ok(String)` - 成功启动，返回虚拟 IP 地址
     /// * `Err(AppError)` - 启动失败
+    // These arguments mirror the independent Tauri lobby configuration fields.
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_easytier_with_config(
         &self,
         network_name: String,
@@ -807,7 +809,7 @@ text returned of result
 
         // 清理旧的配置目录（启动时清理）
         log::info!("正在清理旧的配置目录...");
-        if let Ok(entries) = std::fs::read_dir(&working_dir) {
+        if let Ok(entries) = std::fs::read_dir(working_dir) {
             for entry in entries.flatten() {
                 if let Ok(file_name) = entry.file_name().into_string() {
                     // 只清理以 config_mctier- 开头的目录
@@ -1301,7 +1303,7 @@ text returned of result
     async fn cleanup_orphan_processes() {
         log::info!("🧹 [PreStart] 检查并清理可能残留的孤儿 easytier-core.exe 进程...");
         let output = tokio::process::Command::new("taskkill")
-            .args(&["/F", "/IM", "easytier-core.exe"])
+            .args(["/F", "/IM", "easytier-core.exe"])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .await;
@@ -1879,7 +1881,7 @@ text returned of result
             #[cfg(target_os = "windows")]
             {
                 let _ = tokio::process::Command::new("taskkill")
-                    .args(&["/F", "/IM", "easytier-core.exe"])
+                    .args(["/F", "/IM", "easytier-core.exe"])
                     .creation_flags(CREATE_NO_WINDOW)
                     .output()
                     .await;
@@ -1914,7 +1916,7 @@ text returned of result
 
             // 首先列出所有网络设备
             match tokio::process::Command::new("pnputil")
-                .args(&["/enum-devices", "/class", "Net"])
+                .args(["/enum-devices", "/class", "Net"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
                 .await
@@ -1965,7 +1967,7 @@ text returned of result
 
                         // 尝试删除设备
                         match tokio::process::Command::new("pnputil")
-                            .args(&["/remove-device", device_id])
+                            .args(["/remove-device", device_id])
                             .creation_flags(CREATE_NO_WINDOW)
                             .output()
                             .await
@@ -2005,7 +2007,7 @@ text returned of result
             // 方法2: 使用netsh禁用和删除网卡
             log::info!("🔧 [StopEasyTier] 方法2: 使用netsh禁用和删除MCTier_Net网卡...");
             match tokio::process::Command::new("netsh")
-                .args(&["interface", "show", "interface"])
+                .args(["interface", "show", "interface"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
                 .await
@@ -2038,7 +2040,7 @@ text returned of result
 
                                     // 先禁用网卡
                                     match tokio::process::Command::new("netsh")
-                                        .args(&[
+                                        .args([
                                             "interface",
                                             "set",
                                             "interface",
@@ -2105,7 +2107,7 @@ text returned of result
             "#;
 
             match tokio::process::Command::new("powershell")
-                .args(&["-NoProfile", "-NonInteractive", "-Command", ps_script])
+                .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
                 .await
@@ -2355,9 +2357,11 @@ mod tests {
 
     #[test]
     fn test_bind_device_argument_includes_required_boolean_value() {
-        let mut config = crate::modules::config_manager::EasyTierAdvancedConfig::default();
-        config.bind_device = true;
-        config.dev_name = Some("MCTier_Net".to_string());
+        let config = crate::modules::config_manager::EasyTierAdvancedConfig {
+            bind_device: true,
+            dev_name: Some("MCTier_Net".to_string()),
+            ..Default::default()
+        };
 
         let mut command = Command::new("easytier-core.exe");
         NetworkService::apply_advanced_config(&mut command, &config);

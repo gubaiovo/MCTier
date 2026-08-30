@@ -462,6 +462,7 @@ pub struct AppState {
 /// * `Ok(Lobby)` - 成功创建的大厅信息
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_lobby(
     name: String,
     password: String,
@@ -515,7 +516,7 @@ pub async fn create_lobby(
             signaling_server.clone(),
             use_domain.unwrap_or(false),
             virtual_domain,
-            &*network_svc,
+            &network_svc,
             &app_handle,
             global_config,
             lobby_config,
@@ -587,6 +588,7 @@ pub async fn create_lobby(
 /// * `Ok(Lobby)` - 成功加入的大厅信息
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn join_lobby(
     name: String,
     password: String,
@@ -642,7 +644,7 @@ pub async fn join_lobby(
             signaling_server.clone(),
             use_domain.unwrap_or(false),
             virtual_domain,
-            &*network_svc,
+            &network_svc,
             &app_handle,
             global_config,
             lobby_config,
@@ -777,7 +779,7 @@ pub async fn leave_lobby(state: State<'_, AppState>) -> Result<(), String> {
     let mut lobby_mgr = lobby_manager.lock().await;
     let network_svc = network_service.lock().await;
 
-    match lobby_mgr.leave_lobby(&*network_svc).await {
+    match lobby_mgr.leave_lobby(&network_svc).await {
         Ok(_) => {
             log::info!("成功退出大厅");
             drop(lobby_mgr);
@@ -1267,7 +1269,7 @@ pub async fn exit_app(state: State<'_, AppState>, app: tauri::AppHandle) -> Resu
         // 退出大厅
         let mut lobby_mgr = lobby_manager.lock().await;
         let network_svc = network_service.lock().await;
-        if let Err(e) = lobby_mgr.leave_lobby(&*network_svc).await {
+        if let Err(e) = lobby_mgr.leave_lobby(&network_svc).await {
             log::warn!("退出大厅时发生错误: {}", e);
         }
     }
@@ -1513,7 +1515,7 @@ pub async fn toggle_mini_mode(mini_mode: bool, window: tauri::Window) -> Result<
 /// * `Err(String)` - 错误信息
 #[tauri::command]
 pub async fn set_window_opacity(opacity: f64, window: tauri::Window) -> Result<(), String> {
-    let clamped_opacity = opacity.max(0.3).min(1.0);
+    let clamped_opacity = opacity.clamp(0.3, 1.0);
 
     // 注意：不再使用 WS_EX_LAYERED + SetLayeredWindowAttributes(LWA_ALPHA)。
     // 该方式会用“整窗统一 alpha”覆盖 Tauri 的逐像素真透明（transparent:true），
@@ -1834,7 +1836,7 @@ pub async fn check_firewall_rules() -> Result<bool, String> {
         // 检查 Windows 防火墙是否已存在 MCTier 的放行规则
         // 注意：必须与 add_firewall_rules 中添加的规则名保持一致
         let output = Command::new(windows_system_command("netsh.exe"))
-            .args(&["advfirewall", "firewall", "show", "rule", "name=all"])
+            .args(["advfirewall", "firewall", "show", "rule", "name=all"])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| format!("执行 netsh 失败: {}", e))?;
@@ -1947,7 +1949,7 @@ pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, 
                 let rule_name = format!("{}{}", base_name, suffix);
                 // 先删除同名旧规则避免重复堆积
                 let _ = tokio::process::Command::new(windows_system_command("netsh.exe"))
-                    .args(&[
+                    .args([
                         "advfirewall",
                         "firewall",
                         "delete",
@@ -1959,7 +1961,7 @@ pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, 
                     .await;
 
                 let output = tokio::process::Command::new(windows_system_command("netsh.exe"))
-                    .args(&[
+                    .args([
                         "advfirewall",
                         "firewall",
                         "add",
@@ -2024,7 +2026,7 @@ pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String
         // installation directory contains PowerShell metacharacters.
         let powershell = windows_system_command("WindowsPowerShell\\v1.0\\powershell.exe");
         let spawn = std::process::Command::new(powershell)
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-WindowStyle",
                 "Hidden",
@@ -3630,6 +3632,7 @@ async fn commit_download_part_noreplace(
 /// - 通过 `download-progress` 事件上报进度（taskId/downloaded/total）
 /// - 支持通过 `cancel_remote_download` 取消
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn download_remote_file(
     task_id: String,
     peer_ip: String,
@@ -3836,6 +3839,7 @@ pub fn cancel_remote_download(task_id: String) {
 
 /// 流式批量打包下载：POST file_paths 到对端 batch-download，边收边写盘到 save_path
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn download_remote_batch(
     task_id: String,
     peer_ip: String,
@@ -4124,7 +4128,7 @@ pub async fn detect_security_software() -> Vec<String> {
         ];
 
         let output = tokio::process::Command::new(windows_system_command("tasklist.exe"))
-            .args(&["/fo", "csv", "/nh"])
+            .args(["/fo", "csv", "/nh"])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .await;
@@ -4344,7 +4348,7 @@ fn is_symlink_or_reparse_point(metadata: &std::fs::Metadata) -> bool {
 
         // FILE_ATTRIBUTE_REPARSE_POINT. Junctions and other reparse points can
         // redirect extraction outside of the user-selected directory.
-        return metadata.file_attributes() & 0x400 != 0;
+        metadata.file_attributes() & 0x400 != 0
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -5140,7 +5144,7 @@ fn validate_outgoing_chat_payload(
     local_is_host: bool,
     local_messages: &[ChatServiceMessage],
 ) -> Result<(), String> {
-    let content_bytes = content.as_bytes().len();
+    let content_bytes = content.len();
     match message_type {
         MessageType::Text => {
             if content_bytes == 0 || content_bytes > MAX_TEXT_BYTES || image_data.is_some() {
@@ -5294,6 +5298,7 @@ pub async fn stop_p2p_chat(state: State<'_, AppState>) -> Result<(), String> {
 /// * `Ok(())` - 发送成功
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_p2p_chat_message(
     player_id: String,
     player_name: String,
@@ -5383,7 +5388,7 @@ pub async fn send_p2p_chat_message(
     log::info!(
         "📤 [ChatService] 向 {} 个已授权玩家发送 {} 字节消息",
         authoritative_peers.len(),
-        content.as_bytes().len()
+        content.len()
     );
 
     let total = authoritative_peers.len();
@@ -5494,7 +5499,7 @@ fn is_safe_remote_chat_message(
     {
         return false;
     }
-    let content_bytes = message.content.as_bytes().len();
+    let content_bytes = message.content.len();
     let shape_is_valid = match message.message_type {
         MessageType::Text => {
             content_bytes > 0 && content_bytes <= MAX_TEXT_BYTES && message.image_data.is_none()
@@ -6137,6 +6142,7 @@ pub async fn read_log_file() -> Result<String, String> {
 /// * `remember_window_position` - 是否记住窗口位置
 /// * `enable_gpu_rendering` - 是否启用 GPU 渲染
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_settings(
     language: Option<String>,
     auto_startup: bool,
@@ -6777,6 +6783,7 @@ pub async fn restart_app_with_gpu_settings(
 /// * `Ok(())` - 保存成功
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_exit_node_advanced_config(
     enable_socks5: Option<bool>,
     socks5_port: Option<u16>,

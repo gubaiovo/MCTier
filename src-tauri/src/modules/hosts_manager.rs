@@ -545,7 +545,7 @@ impl HostsManager {
 
             // 方法2: 使用 netsh 清除DNS缓存（更彻底，隐藏窗口）
             match Command::new("netsh")
-                .args(&["interface", "ip", "delete", "arpcache"])
+                .args(["interface", "ip", "delete", "arpcache"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
             {
@@ -563,7 +563,7 @@ impl HostsManager {
 
             // 方法3: 使用 netsh 重置DNS客户端（隐藏窗口）
             match Command::new("netsh")
-                .args(&["interface", "ip", "delete", "destinationcache"])
+                .args(["interface", "ip", "delete", "destinationcache"])
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
             {

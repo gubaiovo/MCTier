@@ -451,11 +451,13 @@ fn show_tray_background_notification(app: &tauri::AppHandle, generation: u64) {
             // Clear the previous balloon first. Windows otherwise coalesces
             // identical tray notifications and reports success without showing
             // the next one, which is especially visible after entering a lobby.
-            let mut clear_data = NOTIFYICONDATAW::default();
-            clear_data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-            clear_data.hWnd = tray_window;
-            clear_data.uID = tray_id;
-            clear_data.uFlags = NIF_INFO;
+            let clear_data = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: tray_window,
+                uID: tray_id,
+                uFlags: NIF_INFO,
+                ..Default::default()
+            };
             let cleared = unsafe { Shell_NotifyIconW(NIM_MODIFY, &clear_data).as_bool() };
             let clear_error = if cleared {
                 0
@@ -466,11 +468,13 @@ fn show_tray_background_notification(app: &tauri::AppHandle, generation: u64) {
                 std::thread::sleep(std::time::Duration::from_millis(80));
             }
 
-            let mut data = NOTIFYICONDATAW::default();
-            data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-            data.hWnd = tray_window;
-            data.uID = tray_id;
-            data.uFlags = NIF_INFO;
+            let mut data = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: tray_window,
+                uID: tray_id,
+                uFlags: NIF_INFO,
+                ..Default::default()
+            };
             let notification_icon = load_notification_icon();
             if let Some(icon) = notification_icon {
                 data.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
@@ -519,12 +523,14 @@ fn show_tray_background_notification(app: &tauri::AppHandle, generation: u64) {
             let fallback_icon = load_notification_icon();
             let fallback_id = 0x4D43_0001;
             if let Some(fallback_icon) = fallback_icon {
-                let mut add_data = NOTIFYICONDATAW::default();
-                add_data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-                add_data.hWnd = tray_window;
-                add_data.uID = fallback_id;
-                add_data.uFlags = NIF_ICON;
-                add_data.hIcon = fallback_icon;
+                let add_data = NOTIFYICONDATAW {
+                    cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                    hWnd: tray_window,
+                    uID: fallback_id,
+                    uFlags: NIF_ICON,
+                    hIcon: fallback_icon,
+                    ..Default::default()
+                };
                 let _ = unsafe { Shell_NotifyIconW(NIM_DELETE, &add_data) };
                 let added = unsafe { Shell_NotifyIconW(NIM_ADD, &add_data).as_bool() };
                 let add_error = if added {
@@ -534,12 +540,14 @@ fn show_tray_background_notification(app: &tauri::AppHandle, generation: u64) {
                 };
                 if added {
                     std::thread::sleep(std::time::Duration::from_millis(80));
-                    let mut fallback_data = NOTIFYICONDATAW::default();
-                    fallback_data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-                    fallback_data.hWnd = tray_window;
-                    fallback_data.uID = fallback_id;
-                    fallback_data.uFlags = NIF_INFO;
-                    fallback_data.dwInfoFlags = NIIF_INFO;
+                    let mut fallback_data = NOTIFYICONDATAW {
+                        cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                        hWnd: tray_window,
+                        uID: fallback_id,
+                        uFlags: NIF_INFO,
+                        dwInfoFlags: NIIF_INFO,
+                        ..Default::default()
+                    };
                     fallback_data.Anonymous.uTimeout = 7000;
                     write_wide(&mut fallback_data.szInfoTitle, &title);
                     write_wide(&mut fallback_data.szInfo, &notification_body);
@@ -564,20 +572,19 @@ fn show_tray_background_notification(app: &tauri::AppHandle, generation: u64) {
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_secs(10));
                         let _ = cleanup_app.run_on_main_thread(move || {
-                            let mut delete_data = NOTIFYICONDATAW::default();
-                            delete_data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-                            delete_data.hWnd = HWND(tray_window_value as *mut _);
-                            delete_data.uID = fallback_id;
-                            delete_data.uFlags = NIF_ICON;
+                            let delete_data = NOTIFYICONDATAW {
+                                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                                hWnd: HWND(tray_window_value as *mut _),
+                                uID: fallback_id,
+                                uFlags: NIF_ICON,
+                                ..Default::default()
+                            };
                             unsafe {
                                 let _ = Shell_NotifyIconW(NIM_DELETE, &delete_data);
                                 let _ = DestroyIcon(HICON(fallback_icon_value as *mut _));
                             }
                         });
                     });
-                    if fallback_shown {
-                        return;
-                    }
                 } else {
                     unsafe {
                         let _ = DestroyIcon(fallback_icon);

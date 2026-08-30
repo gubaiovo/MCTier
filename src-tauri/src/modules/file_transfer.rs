@@ -471,12 +471,20 @@ impl FileTransferService {
     }
 }
 
+impl Default for FileTransferService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Axum 应用状态
+type PasswordFailureMap = Arc<Mutex<HashMap<(String, IpAddr), VecDeque<Instant>>>>;
+
 #[derive(Clone)]
 struct AppState {
     shared_folders: Arc<DashMap<String, SharedFolder>>,
     batch_slots: Arc<Semaphore>,
-    password_failures: Arc<Mutex<HashMap<(String, IpAddr), VecDeque<Instant>>>>,
+    password_failures: PasswordFailureMap,
     lobby_token: Arc<RwLock<Option<String>>>,
 }
 
