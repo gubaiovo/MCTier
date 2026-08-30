@@ -26,6 +26,7 @@ const androidRepository = fs.readFileSync(
   ),
   'utf8'
 );
+const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 
 test('lobby members are identified by player ID instead of a transient virtual IP', () => {
   assert.doesNotMatch(desktopRtc, /player\.virtualIp === this\.virtualIp/);
@@ -44,6 +45,38 @@ test('desktop waits for an authoritative signaling registration result', () => {
   assert.match(connectBlock, /acceptRegistration\(\)/);
   assert.match(connectBlock, /message\.type === 'register-error'/);
   assert.match(connectBlock, /rejectRegistration\(new SignalingRegistrationError/);
+
+  const openHandler =
+    connectBlock.match(/this\.websocket\.onopen = \(\) => \{([\s\S]*?)\n\s*\};/)?.[1] ?? '';
+  assert.doesNotMatch(
+    openHandler,
+    /\bresolve\s*\(/,
+    'WebSocket open must not resolve before register-success'
+  );
+});
+
+test('transient signaling failures preserve the virtual LAN and retry membership sync', () => {
+  assert.match(appSource, /error instanceof SignalingRegistrationError/);
+  assert.match(appSource, /setWebRtcRetryTick/);
+  assert.match(appSource, /虚拟局域网仍在运行，正在自动恢复大厅成员同步/);
+
+  const transientBranch = appSource.slice(
+    appSource.indexOf('if (!(error instanceof SignalingRegistrationError))'),
+    appSource.indexOf('// 后端 EasyTier 加入成功并不代表信令大厅注册成功')
+  );
+  assert.doesNotMatch(transientBranch, /leave_lobby|clearLobby|setAppState\('idle'\)/);
+});
+
+test('lobby success is announced only after signaling registration and initial metadata is retained', () => {
+  const preRegistrationSuccess = lobbyForm.slice(
+    lobbyForm.indexOf('setLobby({ ...lobby, serverNode, signalingServer })'),
+    lobbyForm.indexOf('} catch (error) {', lobbyForm.indexOf('setLobby({ ...lobby, serverNode, signalingServer })'))
+  );
+
+  assert.doesNotMatch(preRegistrationSuccess, /message\.success/);
+  assert.match(appSource, /大厅连接成功/);
+  assert.match(desktopRtc, /this\.pendingLobbyMeta = lobbyMeta/);
+  assert.match(desktopRtc, /if \(this\.pendingLobbyMeta\)/);
 });
 
 test('Android normalizes shared credentials and rolls back a rejected registration', () => {

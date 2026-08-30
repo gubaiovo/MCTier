@@ -986,11 +986,8 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         console.warn('记录统计会话失败（忽略）:', e);
       }
 
-      message.success(
-        mode === 'create' ? tl('大厅创建成功！', 'Lobby created!') : tl('成功加入大厅！', 'Joined the lobby!')
-      );
-
-      // 关闭表单
+      // WebSocket 注册仍在 App 的大厅协调器中进行。成功提示必须等到
+      // register-success，不能只凭 EasyTier 已拿到虚拟 IP 就提前显示。
       onClose();
     } catch (error) {
       console.error('操作失败:', error);

@@ -41,7 +41,14 @@ export interface PeerConnection {
   createdAt: number; // 连接创建时间
 }
 
-class SignalingRegistrationError extends Error {
+interface LobbyMeta {
+  hostId?: string;
+  maxPlayers?: number | null;
+  isPublic?: boolean;
+  mutedPlayers?: string[];
+}
+
+export class SignalingRegistrationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SignalingRegistrationError';
@@ -123,7 +130,7 @@ export class WebRTCClient {
   private onChatMessageCallback?: (playerId: string, playerName: string, content: string, timestamp: number) => void;
   private onVersionErrorCallback?: (currentVersion: string, minimumVersion: string, downloadUrl: string) => void;
   // 房主/大厅管理相关回调
-  private onLobbyMetaCallback?: (meta: { hostId?: string; maxPlayers?: number | null; isPublic?: boolean; mutedPlayers?: string[] }) => void;
+  private onLobbyMetaCallback?: (meta: LobbyMeta) => void;
   private onHostChangedCallback?: (hostId: string) => void;
   private onMuteChangedCallback?: (playerId: string, muted: boolean) => void;
   private onLobbyOptionsChangedCallback?: (maxPlayers: number | null, isPublic: boolean) => void;
@@ -135,6 +142,7 @@ export class WebRTCClient {
     virtualDomain?: string;
     useDomain?: boolean;
   }> = new Map();
+  private pendingLobbyMeta: LobbyMeta | null = null;
 
   /**
    * 初始化 WebRTC 客户端
@@ -193,6 +201,8 @@ export class WebRTCClient {
       // 【优化】只在首次初始化时清空已知玩家列表
       // 信令服务器重连时不应该清空，避免重复建立连接
       this.knownPlayers.clear();
+      this.pendingPlayerJoined.clear();
+      this.pendingLobbyMeta = null;
       this.playerDomains.clear();
       this.clearAllPendingPlayerLeaves();
 
@@ -269,7 +279,13 @@ export class WebRTCClient {
       console.error('❌ WebRTC 初始化失败:', error);
       // 清理已创建的资源
       await this.cleanup();
-      throw new Error(tl(`无法初始化语音系统: ${error}`, `Failed to initialize the voice system: ${error}`));
+      // Preserve the original error type so the lobby coordinator can tell an
+      // authoritative rejection (password/version) from a transient socket
+      // failure. Treating both the same used to tear down a healthy EasyTier
+      // room on macOS after a brief signaling interruption.
+      throw error instanceof Error
+        ? error
+        : new Error(tl(`无法初始化语音系统: ${error}`, `Failed to initialize the voice system: ${error}`));
     }
   }
 
@@ -386,8 +402,6 @@ export class WebRTCClient {
             if (this.websocket === socket) this.reconnectAttempts = 0;
             this.websocketStableTimer = null;
           }, 6000);
-          
-          resolve();
         };
         
         this.websocket.onmessage = (event) => {
@@ -686,19 +700,23 @@ export class WebRTCClient {
           // 收到 pong 响应（上方已重置超时，这里仅用于明确分支）
           break;
           
-        case 'register-success':
+        case 'register-success': {
           // 注册成功
           console.log('✅ 注册成功，大厅ID:', message.lobbyId);
           // 携带房主/人数上限/公开状态/禁言列表等大厅元数据
+          const lobbyMeta: LobbyMeta = {
+            hostId: message.hostId,
+            maxPlayers: message.maxPlayers ?? null,
+            isPublic: message.isPublic,
+            mutedPlayers: message.mutedPlayers,
+          };
           if (this.onLobbyMetaCallback) {
-            this.onLobbyMetaCallback({
-              hostId: message.hostId,
-              maxPlayers: message.maxPlayers ?? null,
-              isPublic: message.isPublic,
-              mutedPlayers: message.mutedPlayers,
-            });
+            this.onLobbyMetaCallback(lobbyMeta);
+          } else {
+            this.pendingLobbyMeta = lobbyMeta;
           }
           break;
+        }
           
         case 'register-error':
           // 注册失败
@@ -3038,8 +3056,12 @@ export class WebRTCClient {
   }
 
   // ==================== 房主/大厅管理 ====================
-  onLobbyMeta(cb: (meta: { hostId?: string; maxPlayers?: number | null; isPublic?: boolean; mutedPlayers?: string[] }) => void): void {
+  onLobbyMeta(cb: (meta: LobbyMeta) => void): void {
     this.onLobbyMetaCallback = cb;
+    if (this.pendingLobbyMeta) {
+      cb(this.pendingLobbyMeta);
+      this.pendingLobbyMeta = null;
+    }
   }
   onHostChanged(cb: (hostId: string) => void): void {
     this.onHostChangedCallback = cb;
@@ -3219,6 +3241,8 @@ export class WebRTCClient {
       this.websocketReconnectInFlight = false;
       this.manualReconnectingPeers.clear();
       this.knownPlayers.clear();
+      this.pendingPlayerJoined.clear();
+      this.pendingLobbyMeta = null;
       this.authoritativePlayers.clear();
       this.authoritativeSnapshotVersion = 0;
       this.playerDomains.clear();

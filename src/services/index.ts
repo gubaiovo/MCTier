@@ -4,7 +4,7 @@
  */
 
 // WebRTC 服务
-export { WebRTCClient, webrtcClient } from './webrtc';
+export { SignalingRegistrationError, WebRTCClient, webrtcClient } from './webrtc';
 export type { SignalingMessage, PeerConnection } from './webrtc';
 
 // 快捷键服务

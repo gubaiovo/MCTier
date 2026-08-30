@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ConfigProvider, theme, App as AntdApp, Button, Modal } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { ConfigProvider, theme, App as AntdApp, Button, Modal, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { invoke } from '@tauri-apps/api/core';
@@ -15,7 +15,13 @@ import { DanmakuOverlay } from './components/Danmaku/DanmakuOverlay';
 import { GameHudOverlay } from './components/GameHud/GameHudOverlay';
 import { VersionUpdateModal } from './components/VersionUpdateModal';
 import { useAppStore, initializeStore } from './stores';
-import { hotkeyManager, webrtcClient, audioService, fileShareService } from './services';
+import {
+  SignalingRegistrationError,
+  hotkeyManager,
+  webrtcClient,
+  audioService,
+  fileShareService,
+} from './services';
 import { screenShareService } from './services/screenShare/ScreenShareService';
 import { speakingDetector } from './services/voice/SpeakingDetector';
 import { versionCheckService } from './services/version/VersionCheckService';
@@ -44,6 +50,8 @@ function App() {
   const currentPlayerId = useAppStore((state) => state.currentPlayerId);
   const addChatMessage = useAppStore((state) => state.addChatMessage);
   const setPlayerSpeaking = useAppStore((state) => state.setPlayerSpeaking);
+  const [webRtcRetryTick, setWebRtcRetryTick] = useState(0);
+  const webRtcRetryState = useRef({ lobbyId: '', attempts: 0, notified: false });
   const [showMicrophonePermissionHelp, setShowMicrophonePermissionHelp] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -479,6 +487,13 @@ function App() {
   // 当进入大厅时初始化WebRTC
   useEffect(() => {
     if (appState === 'in-lobby' && lobby) {
+      let cancelled = false;
+      let retryTimer: number | null = null;
+
+      if (webRtcRetryState.current.lobbyId !== lobby.id) {
+        webRtcRetryState.current = { lobbyId: lobby.id, attempts: 0, notified: false };
+      }
+
       const initWebRTC = async () => {
         try {
           // 使用应用启动时生成的玩家ID，而不是重新生成
@@ -638,6 +653,18 @@ function App() {
 
           console.log('✅ WebRTC 初始化完成，玩家ID:', playerId);
 
+          if (cancelled || useAppStore.getState().lobby?.id !== lobby.id) return;
+
+          message.success({
+            key: 'lobby-signaling-status',
+            content: webRtcRetryState.current.attempts > 0
+              ? tl('大厅成员同步已恢复', 'Lobby member synchronization restored')
+              : tl('大厅连接成功', 'Lobby connected'),
+            duration: 3,
+          });
+          webRtcRetryState.current.attempts = 0;
+          webRtcRetryState.current.notified = false;
+
           // 启动HTTP文件服务器
           try {
             console.log('🚀 正在启动HTTP文件服务器...');
@@ -653,7 +680,35 @@ function App() {
 
           // 若用户已经主动离开或切换了大厅，不再把旧初始化任务的结束
           // 当成当前大厅错误，也不重复停止新会话。
-          if (useAppStore.getState().lobby?.id !== lobby.id) return;
+          if (cancelled || useAppStore.getState().lobby?.id !== lobby.id) return;
+
+          // 服务端明确拒绝（密码不匹配、版本过低）无法通过重试恢复，仍需
+          // 回滚整个会话。普通 WebSocket/DNS 抖动则保留已经建立好的虚拟
+          // 局域网并后台重试；此前 macOS 会在成功提示结束后直接关闭房间。
+          if (!(error instanceof SignalingRegistrationError)) {
+            const retryState = webRtcRetryState.current;
+            retryState.attempts += 1;
+            const delay = Math.min(1500 * 2 ** Math.min(retryState.attempts - 1, 3), 12000);
+
+            if (!retryState.notified) {
+              retryState.notified = true;
+              message.warning({
+                key: 'lobby-signaling-status',
+                content: tl(
+                  '虚拟局域网仍在运行，正在自动恢复大厅成员同步…',
+                  'The virtual LAN is still running; restoring lobby member synchronization…'
+                ),
+                duration: 6,
+              });
+            }
+
+            retryTimer = window.setTimeout(() => {
+              if (useAppStore.getState().lobby?.id === lobby.id) {
+                setWebRtcRetryTick((tick) => tick + 1);
+              }
+            }, delay);
+            return;
+          }
 
           // 后端 EasyTier 加入成功并不代表信令大厅注册成功。此前密码错误
           // 或跨平台凭据不一致只会写日志，界面却停留在一个“只有自己”的
@@ -679,10 +734,24 @@ function App() {
       };
 
       initWebRTC();
+
+      return () => {
+        cancelled = true;
+        if (retryTimer !== null) window.clearTimeout(retryTimer);
+      };
     }
     // 注意：不在这里添加cleanup，因为退出大厅时会在MiniWindow中手动调用cleanup
     // 这样可以确保cleanup在正确的时机执行，避免状态不一致
-  }, [appState, lobby, addPlayer, removePlayer, updatePlayerStatus, setCurrentPlayerId, addChatMessage]);
+  }, [
+    appState,
+    lobby,
+    addPlayer,
+    removePlayer,
+    updatePlayerStatus,
+    setCurrentPlayerId,
+    addChatMessage,
+    webRtcRetryTick,
+  ]);
 
   // 监听窗口位置变化并保存
   useEffect(() => {
