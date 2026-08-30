@@ -221,13 +221,21 @@ docker compose -f docker-compose-http.yml logs -f
 
 ### Step 1: Fetch third-party binaries (required after the first clone)
 
-`src-tauri/src/modules/resource_manager.rs` embeds 5 third-party binaries at compile time via `include_bytes!`. Those files are subject to copyright and licensing restrictions (notably Npcap's `Packet.dll`, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8), so they are not tracked in this repository. After cloning you must run the script below, otherwise `cargo build` fails because the files are missing:
+`src-tauri/src/modules/resource_manager.rs` embeds the target platform's EasyTier binaries at compile time; Windows also embeds three runtime dependencies. Those files are subject to copyright and licensing restrictions (notably Npcap's `Packet.dll`, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8), so they are not tracked in this repository. After cloning, run the script for your platform or `cargo build` will fail because the files are missing.
+
+Windows x64:
 
 ```powershell
 .\scripts\fetch-binaries.ps1
 ```
 
-The script downloads `easytier-windows-x86_64-v2.5.0.zip` from the official EasyTier release, verifies the SHA-256 of every file (aborting on any mismatch), then places them into `src-tauri/resources/binaries/`. Files that already exist and pass verification are skipped; pass `-Force` to re-fetch.
+macOS (auto-detects Intel or Apple Silicon; `x86_64` / `arm64` may be passed explicitly):
+
+```bash
+./scripts/fetch-macos-binaries.sh
+```
+
+The scripts download the matching archive from the official EasyTier v2.5.0 release, verify the archive and file SHA-256 values (aborting on any mismatch), then place the binaries in `src-tauri/resources/binaries/`. Existing Windows files that pass verification are skipped; pass `-Force` to re-fetch them.
 
 ### Step 2: Build
 ```bash
@@ -235,6 +243,8 @@ npm install
 npm run tauri dev
 # Build the Windows NSIS installer (recommended with the pinned Node runtime)
 npm run tauri build -- --bundles nsis --ci
+# Build a macOS DMG on a Mac of the matching architecture
+npm run tauri build -- --bundles dmg --ci
 ```
 
 Desktop release builds generate the NSIS installer only. This avoids processing the offline WebView2 installer twice when MSI is also enabled. The repository's one-click version update tool prepares the pinned Node runtime and uses the same NSIS arguments.
@@ -251,6 +261,8 @@ Debug or package Android:
 cd MCTier-Android
 gradlew.bat assembleDebug
 ```
+
+GitHub Actions builds Windows, macOS Intel, macOS Apple Silicon, and Android for pull requests, `master`, version tags, manual rebuilds, and nightly runs. See the [CI and release guide](docs/ci-release.md) for signing secrets, the Npcap redistribution gate, and release procedures.
 
 ## Sponsor
 

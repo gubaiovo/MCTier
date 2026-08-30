@@ -7,6 +7,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val releaseSigningValues = mapOf(
+    "storeFile" to System.getenv("MCTIER_ANDROID_KEYSTORE_PATH"),
+    "storePassword" to System.getenv("MCTIER_ANDROID_KEYSTORE_PASSWORD"),
+    "keyAlias" to System.getenv("MCTIER_ANDROID_KEY_ALIAS"),
+    "keyPassword" to System.getenv("MCTIER_ANDROID_KEY_PASSWORD"),
+)
+val hasAnyReleaseSigningValue = releaseSigningValues.values.any { !it.isNullOrBlank() }
+val hasAllReleaseSigningValues = releaseSigningValues.values.all { !it.isNullOrBlank() }
+
+if (hasAnyReleaseSigningValue && !hasAllReleaseSigningValues) {
+    throw GradleException(
+        "Android release signing is only partially configured. Set all MCTIER_ANDROID_* variables.",
+    )
+}
+
 android {
     namespace = "top.pmh13.mctier"
     compileSdk = 36
@@ -24,6 +39,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasAllReleaseSigningValues) {
+            create("release") {
+                storeFile = file(releaseSigningValues.getValue("storeFile")!!)
+                storePassword = releaseSigningValues.getValue("storePassword")
+                keyAlias = releaseSigningValues.getValue("keyAlias")
+                keyPassword = releaseSigningValues.getValue("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // 开启 R8：剥离未使用代码并混淆，缩小包体并提高逆向成本（见 issue #17 第 6 条）。
@@ -31,6 +57,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasAllReleaseSigningValues) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

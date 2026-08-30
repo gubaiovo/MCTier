@@ -1,152 +1,689 @@
-name: CI
+name: Build and release
 
 on:
-  push:
-    branches: [master, main]
   pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to rebuild (for example v2.8.0 or v2.8.0-rc.1)
+        required: true
+        type: string
+      publish:
+        description: Replace assets on the tag's GitHub Release after all checks pass
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    # 02:00 Asia/Shanghai (18:00 UTC on the previous calendar day).
+    - cron: '0 18 * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: mctier-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/master' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  frontend:
-    name: Frontend (lint / typecheck / test)
-    runs-on: windows-latest
+  metadata:
+    name: Resolve build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      checkout_ref: ${{ steps.resolve.outputs.checkout_ref }}
+      channel: ${{ steps.resolve.outputs.channel }}
+      publish: ${{ steps.resolve.outputs.publish }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      retention_days: ${{ steps.resolve.outputs.retention_days }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Resolve event policy
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          GIT_SHA: ${{ github.sha }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
 
-      - uses: actions/setup-node@v4
+          checkout_ref="$GIT_SHA"
+          channel="pr"
+          publish="false"
+          prerelease="false"
+          tag=""
+          retention_days="3"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_TAG"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+              echo "Manual rebuilds require vX.Y.Z or vX.Y.Z-rc.N; received: $tag" >&2
+              exit 1
+            fi
+            git ls-remote --exit-code --tags "https://github.com/${REPOSITORY}.git" "refs/tags/$tag" >/dev/null
+            checkout_ref="refs/tags/$tag"
+            channel="$tag"
+            publish="${INPUT_PUBLISH:-false}"
+            retention_days="14"
+          elif [[ "$GIT_REF" == refs/tags/* ]]; then
+            tag="${GIT_REF#refs/tags/}"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+              echo "Release tags must use vX.Y.Z or vX.Y.Z-rc.N; received: $tag" >&2
+              exit 1
+            fi
+            checkout_ref="$GIT_REF"
+            channel="$tag"
+            publish="true"
+            retention_days="30"
+          elif [[ "$EVENT_NAME" == "schedule" ]]; then
+            channel="nightly-$(date -u +%Y%m%d)"
+            retention_days="7"
+          elif [[ "$GIT_REF" == "refs/heads/master" ]]; then
+            channel="dev-${GIT_SHA:0:7}"
+            retention_days="14"
+          else
+            channel="pr-${GIT_SHA:0:7}"
+          fi
+
+          if [[ "$tag" == *-rc.* ]]; then
+            prerelease="true"
+          fi
+
+          {
+            echo "checkout_ref=$checkout_ref"
+            echo "channel=$channel"
+            echo "publish=$publish"
+            echo "prerelease=$prerelease"
+            echo "tag=$tag"
+            echo "retention_days=$retention_days"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Check out selected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # 需要 Node 22+：`node --test tests/*.test.mjs` 依赖 Node 自身的 glob 展开
-          # （cmd.exe 不做展开），Node 20 会报 "Could not find 'tests\*.test.mjs'"。
+          ref: ${{ steps.resolve.outputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Verify tagged versions are synchronized
+        if: steps.resolve.outputs.tag != ''
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const tag = process.env.RELEASE_TAG;
+          const match = /^v(\d+\.\d+\.\d+)(?:-rc\.\d+)?$/.exec(tag);
+          if (!match) throw new Error(`Invalid release tag: ${tag}`);
+          const expected = match[1];
+
+          const packageVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+          const tauriVersion = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')).version;
+          const cargoText = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
+          const cargoVersion = /^version\s*=\s*"([^"]+)"/m.exec(cargoText)?.[1];
+          const gradleText = fs.readFileSync('MCTier-Android/app/build.gradle.kts', 'utf8');
+          const androidVersion = /versionName\s*=\s*"(\d+\.\d+\.\d+)-android"/.exec(gradleText)?.[1];
+
+          const versions = { packageVersion, tauriVersion, cargoVersion, androidVersion };
+          for (const [source, actual] of Object.entries(versions)) {
+            if (actual !== expected) {
+              throw new Error(`${source}=${actual ?? '<missing>'}, but ${tag} requires ${expected}`);
+            }
+          }
+          console.log(`Version synchronization verified for ${tag}.`);
+          NODE
+
+  frontend:
+    name: Frontend quality
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Lint
-        # 存量代码尚有大量 eslint 告警/错误（多为 no-console 与 explicit-any），
-        # 先纳入 CI 保持可见性，暂不阻塞，待逐步清理后再改为强制。
+      - name: Lint (legacy findings remain visible)
         continue-on-error: true
         run: npm run lint
 
-      - name: Typecheck
-        run: npx tsc --noEmit
+      - name: Formatting check (legacy findings remain visible)
+        continue-on-error: true
+        run: npm run format:check
+
+      - name: Typecheck and production frontend build
+        run: npm run build
 
       - name: Unit tests
         run: npm test
 
       - name: Audit runtime dependencies
-        # 运行时依赖必须无高危漏洞；开发期依赖（vite / rollup 等）另行跟踪，
-        # 不阻塞 CI，避免上游未修复时长期红灯。
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --registry=https://registry.npmjs.org --omit=dev --audit-level=high
 
   rust:
-    name: Rust (fmt / clippy / check)
+    name: Rust quality and tests
+    needs: metadata
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          components: rustfmt, clippy
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
-      - name: Fetch third-party binaries
-        # resource_manager.rs 通过 include_bytes! 内嵌第三方二进制，且这些文件不入库，
-        # 因此编译前必须先获取并校验 SHA-256。
+      - name: Fetch pinned Windows runtime binaries
         run: .\scripts\fetch-binaries.ps1
-        shell: pwsh
 
-      - name: Format check
-        working-directory: src-tauri
-        # 存量文件（build.rs / lib.rs 等）尚未按 rustfmt 规范化，暂不阻塞。
+      - name: Format check (legacy findings remain visible)
         continue-on-error: true
+        working-directory: src-tauri
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        working-directory: src-tauri
-        # 存量代码有 72 项 clippy 告警，先保持可见性，暂不阻塞。
+      - name: Clippy (legacy findings remain visible)
         continue-on-error: true
+        working-directory: src-tauri
         run: cargo clippy --lib --tests
 
-      - name: Check
+      - name: Compile all Rust targets
         working-directory: src-tauri
-        run: cargo check --lib --tests
+        run: cargo check --all-targets
 
-  android:
-    name: Android (assembleDebug)
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib
+
+  compliance:
+    name: License compliance
+    needs: metadata
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
 
-      - uses: actions/setup-java@v4
+      - name: Verify notices and corresponding source material
+        run: |
+          set -euo pipefail
+          for file in LICENSE THIRD_PARTY_NOTICES.md LICENSE-LGPL-3.0.txt LICENSE-GPL-3.0.txt; do
+            test -f "$file" || { echo "missing $file" >&2; exit 1; }
+          done
+          for file in licenses/LICENSE-Apache-2.0.txt licenses/LICENSE-MIT.txt \
+                      licenses/LICENSE-BSD-3-Clause.txt licenses/LICENSE-GPL-2.0.txt \
+                      licenses/LICENSE-GPL-3.0.txt licenses/LICENSE-LGPL-3.0.txt \
+                      licenses/LICENSE-Wintun.txt; do
+            test -f "$file" || { echo "missing $file" >&2; exit 1; }
+          done
+          for component in EasyTier Wintun WinDivert Npcap Javassist LocalVQE GGML; do
+            grep -q "$component" THIRD_PARTY_NOTICES.md || {
+              echo "$component missing from THIRD_PARTY_NOTICES.md" >&2
+              exit 1
+            }
+          done
+          test -f patches/easytier-2.6.0-mctier-android.patch
+
+  dependency-audit:
+    name: Rust dependency audit
+    if: github.event_name != 'pull_request'
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install audit tools
+        run: cargo install cargo-audit cargo-deny --locked
+
+      - name: cargo audit (upstream findings remain visible)
+        continue-on-error: true
+        working-directory: src-tauri
+        run: cargo audit
+
+      - name: cargo deny (upstream findings remain visible)
+        continue-on-error: true
+        working-directory: src-tauri
+        run: cargo deny check
+
+  desktop:
+    name: Desktop package (${{ matrix.name }})
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            id: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macOS Intel
+            id: macos-x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: macOS Apple Silicon
+            id: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install stable Rust target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Fetch pinned Windows runtime binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\fetch-binaries.ps1
+
+      - name: Fetch pinned macOS runtime binaries
+        if: runner.os == 'macOS'
+        run: ./scripts/fetch-macos-binaries.sh "${{ matrix.target == 'aarch64-apple-darwin' && 'arm64' || 'x86_64' }}"
+
+      - name: Import Windows release certificate
+        if: runner.os == 'Windows' && needs.metadata.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in 'WINDOWS_CERTIFICATE_BASE64','WINDOWS_CERTIFICATE_PASSWORD','WINDOWS_TIMESTAMP_URL') {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$name").Value)) {
+              throw "Required release secret is missing: $name"
+            }
+          }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'mctier-signing.pfx'
+          [IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          )
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate `
+            -FilePath $certificatePath `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password
+          if (-not $certificate.Thumbprint) { throw 'The Windows certificate was not imported.' }
+
+          $configPath = Join-Path $env:RUNNER_TEMP 'tauri-windows-signing.json'
+          $config = @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $certificate.Thumbprint
+                digestAlgorithm = 'sha256'
+                timestampUrl = $env:WINDOWS_TIMESTAMP_URL
+              }
+            }
+          } | ConvertTo-Json -Depth 5
+          [IO.File]::WriteAllText($configPath, $config)
+          "MCTIER_TAURI_SIGNING_CONFIG=$configPath" >> $env:GITHUB_ENV
+
+      - name: Configure ad-hoc macOS signing
+        if: runner.os == 'macOS' && needs.metadata.outputs.publish != 'true'
+        run: echo 'APPLE_SIGNING_IDENTITY=-' >>"$GITHUB_ENV"
+
+      - name: Import macOS release certificate
+        if: runner.os == 'macOS' && needs.metadata.outputs.publish == 'true'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          MCTIER_APPLE_ID: ${{ secrets.APPLE_ID }}
+          MCTIER_APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          MCTIER_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD \
+                      MCTIER_APPLE_ID MCTIER_APPLE_PASSWORD MCTIER_APPLE_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required release secret is missing: $name" >&2
+              exit 1
+            fi
+          done
+
+          certificate_path="$RUNNER_TEMP/mctier-signing.p12"
+          keychain_path="$RUNNER_TEMP/mctier-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | openssl base64 -d -A >"$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$keychain_password" "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+
+          signing_identity="$(
+            security find-identity -v -p codesigning "$keychain_path" \
+              | sed -n 's/.*"\([^"]*\)".*/\1/p' \
+              | head -n 1
+          )"
+          if [[ -z "$signing_identity" ]]; then
+            echo 'No macOS code-signing identity was found in the imported certificate.' >&2
+            exit 1
+          fi
+          {
+            echo "APPLE_SIGNING_IDENTITY=$signing_identity"
+            echo "MCTIER_KEYCHAIN_PATH=$keychain_path"
+          } >>"$GITHUB_ENV"
+
+      - name: Build Windows NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          $arguments = @('run', 'tauri', 'build', '--', '--target', $env:TARGET, '--bundles', 'nsis', '--ci')
+          if ($env:MCTIER_TAURI_SIGNING_CONFIG) {
+            $arguments += @('--config', $env:MCTIER_TAURI_SIGNING_CONFIG)
+          }
+          & npm @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Tauri build failed with exit code $LASTEXITCODE" }
+
+      - name: Build macOS DMG
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri build -- --target "${{ matrix.target }}" --bundles dmg --ci
+
+      - name: Smoke-test Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          REQUIRE_SIGNATURE: ${{ needs.metadata.outputs.publish }}
+        run: |
+          $installers = @(Get-ChildItem "src-tauri/target/$env:TARGET/release/bundle/nsis" -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer, found $($installers.Count)." }
+          & 7z t $installers[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw '7-Zip could not test the NSIS installer.' }
+          $listing = (& 7z l $installers[0].FullName) -join "`n"
+          if ($listing -notmatch 'MCTier\.exe') { throw 'The installer does not contain MCTier.exe.' }
+          if ($env:REQUIRE_SIGNATURE -eq 'true') {
+            $signature = Get-AuthenticodeSignature $installers[0].FullName
+            if ($signature.Status -ne 'Valid') {
+              throw "Release installer signature is not valid: $($signature.Status)"
+            }
+          }
+
+      - name: Smoke-test macOS disk image
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          dmg="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -name '*.dmg' -type f -print -quit)"
+          test -n "$dmg"
+          hdiutil verify "$dmg"
+          mount_point="$RUNNER_TEMP/mctier-dmg-${{ matrix.id }}"
+          mkdir -p "$mount_point"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          app="$(find "$mount_point" -maxdepth 1 -name '*.app' -type d -print -quit)"
+          test -n "$app"
+          test -x "$app/Contents/MacOS/mctier"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          hdiutil detach "$mount_point"
+
+      - name: Enforce Npcap redistribution approval
+        if: >-
+          runner.os == 'Windows' &&
+          github.event_name != 'pull_request' &&
+          vars.NPCAP_REDISTRIBUTION_APPROVED != 'true'
+        shell: pwsh
+        run: |
+          throw @'
+          Refusing to upload a Windows artifact because Packet.dll is an Npcap proprietary
+          component and THIRD_PARTY_NOTICES.md records that no OEM redistribution license is
+          currently held. After obtaining permission, set the repository Actions variable
+          NPCAP_REDISTRIBUTION_APPROVED=true.
+          '@
+
+      - name: Stage desktop package
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" \
+              -maxdepth 1 -name '*.exe' -type f -exec cp '{}' staging/ \;
+          else
+            find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" \
+              -maxdepth 1 -name '*.dmg' -type f -exec cp '{}' staging/ \;
+          fi
+          test -n "$(find staging -maxdepth 1 -type f -print -quit)"
+
+      - name: Upload desktop package
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: packages-${{ needs.metadata.outputs.channel }}-${{ matrix.id }}
+          path: staging/*
+          if-no-files-found: error
+          retention-days: ${{ needs.metadata.outputs.retention_days }}
+
+      - name: Remove temporary macOS keychain
+        if: always() && runner.os == 'macOS' && env.MCTIER_KEYCHAIN_PATH != ''
+        run: security delete-keychain "$MCTIER_KEYCHAIN_PATH" || true
+
+  android:
+    name: Android package (arm64-v8a)
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.checkout_ref }}
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
 
-      - name: Assemble debug APK
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      - name: Configure Android release signing
+        if: needs.metadata.outputs.publish == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD \
+                      ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required release secret is missing: $name" >&2
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/mctier-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode >"$keystore"
+          {
+            echo "MCTIER_ANDROID_KEYSTORE_PATH=$keystore"
+            echo "MCTIER_ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+            echo "MCTIER_ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+            echo "MCTIER_ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+          } >>"$GITHUB_ENV"
+
+      - name: Build signed release APK and AAB
+        if: needs.metadata.outputs.publish == 'true'
         working-directory: MCTier-Android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
-  license-check:
-    name: License compliance
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build debug APK
+        if: needs.metadata.outputs.publish != 'true'
+        working-directory: MCTier-Android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify third-party notice files exist
+      - name: Smoke-test APK and release bundle
         run: |
-          set -e
-          for f in LICENSE THIRD_PARTY_NOTICES.md LICENSE-LGPL-3.0.txt LICENSE-GPL-3.0.txt; do
-            test -f "$f" || { echo "missing $f"; exit 1; }
-          done
-          for f in licenses/LICENSE-Apache-2.0.txt licenses/LICENSE-MIT.txt \
-                   licenses/LICENSE-BSD-3-Clause.txt licenses/LICENSE-GPL-2.0.txt \
-                   licenses/LICENSE-GPL-3.0.txt licenses/LICENSE-LGPL-3.0.txt \
-                   licenses/LICENSE-Wintun.txt; do
-            test -f "$f" || { echo "missing $f"; exit 1; }
-          done
+          set -euo pipefail
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          if [[ "${{ needs.metadata.outputs.publish }}" == "true" ]]; then
+            apk="MCTier-Android/app/build/outputs/apk/release/app-release.apk"
+            bundle="MCTier-Android/app/build/outputs/bundle/release/app-release.aab"
+            test -f "$bundle"
+            jarsigner -verify -strict "$bundle"
+          else
+            apk="MCTier-Android/app/build/outputs/apk/debug/app-debug.apk"
+          fi
+          test -f "$apk"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          "$build_tools/aapt" dump badging "$apk" | grep -q "package: name='top.pmh13.mctier'"
+          unzip -l "$apk" | grep -q 'lib/arm64-v8a/libeasytier_android_jni.so'
+          unzip -l "$apk" | grep -q 'assets/THIRD_PARTY_NOTICES.md'
 
-      - name: Verify every bundled component is documented
+      - name: Stage Android packages
+        if: github.event_name != 'pull_request'
         run: |
-          set -e
-          for name in EasyTier Wintun WinDivert Npcap Javassist LocalVQE GGML; do
-            grep -q "$name" THIRD_PARTY_NOTICES.md || { echo "$name missing from THIRD_PARTY_NOTICES.md"; exit 1; }
-          done
+          set -euo pipefail
+          mkdir -p staging
+          if [[ "${{ needs.metadata.outputs.publish }}" == "true" ]]; then
+            cp MCTier-Android/app/build/outputs/apk/release/app-release.apk \
+              staging/MCTier-Android-arm64-v8a.apk
+            cp MCTier-Android/app/build/outputs/bundle/release/app-release.aab \
+              staging/MCTier-Android-arm64-v8a.aab
+          else
+            cp MCTier-Android/app/build/outputs/apk/debug/app-debug.apk \
+              staging/MCTier-Android-arm64-v8a-debug.apk
+          fi
 
-      - name: Verify the modified-EasyTier patch is present
-        run: test -f patches/easytier-2.6.0-mctier-android.patch
+      - name: Upload Android packages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: packages-${{ needs.metadata.outputs.channel }}-android-arm64
+          path: staging/*
+          if-no-files-found: error
+          retention-days: ${{ needs.metadata.outputs.retention_days }}
 
-  cargo-audit:
-    name: Rust dependency audit
+  release:
+    name: Publish GitHub Release
+    if: needs.metadata.outputs.publish == 'true'
+    needs:
+      - metadata
+      - frontend
+      - rust
+      - compliance
+      - dependency-audit
+      - desktop
+      - android
     runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Download verified packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: packages-${{ needs.metadata.outputs.channel }}-*
+          path: release-assets
+          merge-multiple: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
+            | LC_ALL=C sort \
+            | xargs -r sha256sum >SHA256SUMS
+          test -s SHA256SUMS
+          cat SHA256SUMS
 
-      - name: Install cargo-audit and cargo-deny
-        run: cargo install cargo-audit cargo-deny --locked
+      - name: Create or update release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo 'Publishing requires an existing version tag.' >&2
+            exit 1
+          fi
 
-      - name: cargo audit
-        working-directory: src-tauri
-        # 不因未修复的上游告警阻塞主线，但保留可见性。
-        continue-on-error: true
-        run: cargo audit
+          prerelease_args=()
+          latest_args=(--latest)
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_args=(--prerelease)
+            latest_args=(--latest=false)
+          fi
 
-      - name: cargo deny
-        working-directory: src-tauri
-        continue-on-error: true
-        run: cargo deny check
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --verify-tag \
+              --title "MCTier $RELEASE_TAG" \
+              --prerelease="$PRERELEASE" \
+              "${latest_args[@]}"
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "MCTier $RELEASE_TAG" \
+              --generate-notes \
+              "${prerelease_args[@]}" \
+              "${latest_args[@]}"
+          fi
+
+          while IFS= read -r -d '' asset; do
+            gh release upload "$RELEASE_TAG" "$asset" --clobber
+          done < <(find release-assets -maxdepth 1 -type f -print0)
+
+      - name: Publish run summary
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: echo "Published [$RELEASE_TAG](https://github.com/${GITHUB_REPOSITORY}/releases/tag/$RELEASE_TAG)" >>"$GITHUB_STEP_SUMMARY"

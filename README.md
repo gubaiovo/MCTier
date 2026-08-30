@@ -220,13 +220,21 @@ docker compose -f docker-compose-http.yml logs -f
 
 ### 第一步：获取第三方二进制（首次 clone 后必做）
 
-`src-tauri/src/modules/resource_manager.rs` 通过 `include_bytes!` 在编译期内嵌 5 个第三方二进制。这些文件受版权与许可限制（尤其是 Npcap 的 `Packet.dll`，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 第 8 节），因此不纳入本仓库。clone 之后必须先运行下面的脚本，否则 `cargo build` 会因找不到文件而失败：
+`src-tauri/src/modules/resource_manager.rs` 通过 `include_bytes!` 在编译期内嵌目标平台的 EasyTier 二进制；Windows 还会内嵌 3 个运行依赖。这些文件受版权与许可限制（尤其是 Npcap 的 `Packet.dll`，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 第 8 节），因此不纳入本仓库。clone 之后必须先运行对应平台的脚本，否则 `cargo build` 会因找不到文件而失败。
+
+Windows x64：
 
 ```powershell
 .\scripts\fetch-binaries.ps1
 ```
 
-该脚本从 EasyTier 官方 Release 下载 `easytier-windows-x86_64-v2.5.0.zip`，逐个校验 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。已存在且校验通过的文件会被跳过；如需强制重新获取请加 `-Force`。
+macOS（自动识别 Intel 或 Apple Silicon，也可显式传入 `x86_64` / `arm64`）：
+
+```bash
+./scripts/fetch-macos-binaries.sh
+```
+
+脚本从 EasyTier 官方 v2.5.0 Release 下载对应平台压缩包，同时校验压缩包与逐个文件的 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。Windows 已存在且校验通过的文件会被跳过；如需强制重新获取请加 `-Force`。
 
 ### 第二步：构建
 ```bash
@@ -234,6 +242,8 @@ npm install
 npm run tauri dev
 # 发布 Windows NSIS 安装包（推荐使用仓库内固定 Node）
 npm run tauri build -- --bundles nsis --ci
+# macOS DMG（在对应架构的 Mac 上运行）
+npm run tauri build -- --bundles dmg --ci
 ```
 
 桌面端的发布构建只生成 NSIS 安装包，避免同时生成 MSI 时重复处理离线 WebView2 安装器。仓库中的一键版本更新工具会自动准备固定 Node，并使用相同的 NSIS 参数。
@@ -250,6 +260,8 @@ MCTier-Android/
 cd MCTier-Android
 gradlew.bat assembleDebug
 ```
+
+GitHub Actions 会在 PR、`master`、版本标签、手动补发与每日 Nightly 场景下完成 Windows、macOS Intel、macOS Apple Silicon 和 Android 构建。签名密钥、Npcap 再分发门禁与发版步骤见 [GitHub Actions 构建与发布说明](docs/ci-release.md)。
 
 ## 赞助支持
 

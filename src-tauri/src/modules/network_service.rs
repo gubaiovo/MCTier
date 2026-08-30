@@ -79,8 +79,13 @@ pub struct NetworkConfig {
 
 impl Default for NetworkConfig {
     fn default() -> Self {
+        #[cfg(target_os = "windows")]
+        let easytier_path = PathBuf::from("easytier-core.exe");
+        #[cfg(not(target_os = "windows"))]
+        let easytier_path = PathBuf::from("easytier-core");
+
         Self {
-            easytier_path: PathBuf::from("easytier-core.exe"),
+            easytier_path,
             config_dir: PathBuf::from("./config"),
         }
     }
@@ -578,11 +583,15 @@ impl NetworkService {
 
         // 【优化】使用ResourceManager提取必需的DLL文件到easytier-core.exe所在目录
         // 这些DLL文件是easytier-core.exe运行所必需的
+        #[cfg(target_os = "windows")]
         log::info!("开始提取必需的DLL文件...");
         
         // 提取Packet.dll
+        #[cfg(target_os = "windows")]
         let packet_dll_source = ResourceManager::get_packet_dll_path(app_handle)?;
+        #[cfg(target_os = "windows")]
         let packet_dll_target = working_dir.join("Packet.dll");
+        #[cfg(target_os = "windows")]
         if !packet_dll_target.exists() || std::fs::metadata(&packet_dll_target).map(|m| m.len()).unwrap_or(0) 
             != std::fs::metadata(&packet_dll_source).map(|m| m.len()).unwrap_or(1) {
             std::fs::copy(&packet_dll_source, &packet_dll_target)
@@ -591,8 +600,11 @@ impl NetworkService {
         }
         
         // 提取wintun.dll
+        #[cfg(target_os = "windows")]
         let wintun_dll_source = ResourceManager::get_wintun_dll_path(app_handle)?;
+        #[cfg(target_os = "windows")]
         let wintun_dll_target = working_dir.join("wintun.dll");
+        #[cfg(target_os = "windows")]
         if !wintun_dll_target.exists() || std::fs::metadata(&wintun_dll_target).map(|m| m.len()).unwrap_or(0) 
             != std::fs::metadata(&wintun_dll_source).map(|m| m.len()).unwrap_or(1) {
             std::fs::copy(&wintun_dll_source, &wintun_dll_target)
@@ -601,8 +613,11 @@ impl NetworkService {
         }
         
         // 提取WinDivert64.sys
+        #[cfg(target_os = "windows")]
         let windivert_sys_source = ResourceManager::get_windivert_sys_path(app_handle)?;
+        #[cfg(target_os = "windows")]
         let windivert_sys_target = working_dir.join("WinDivert64.sys");
+        #[cfg(target_os = "windows")]
         if !windivert_sys_target.exists() || std::fs::metadata(&windivert_sys_target).map(|m| m.len()).unwrap_or(0) 
             != std::fs::metadata(&windivert_sys_source).map(|m| m.len()).unwrap_or(1) {
             std::fs::copy(&windivert_sys_source, &windivert_sys_target)
@@ -610,6 +625,7 @@ impl NetworkService {
             log::info!("✅ 已复制 WinDivert64.sys");
         }
         
+        #[cfg(target_os = "windows")]
         log::info!("✅ 所有必需的DLL文件已准备就绪");
 
         // 生成唯一的实例名称（基于时间戳和随机数）
@@ -847,6 +863,7 @@ impl NetworkService {
             .kill_on_drop(true);
         
         // 设置环境变量，确保能找到 wintun.dll
+        #[cfg(target_os = "windows")]
         cmd.env("PATH", working_dir);
         
         log::info!("使用 DHCP + TUN 模式，创建虚拟网卡以支持完整的网络功能");
@@ -2021,7 +2038,10 @@ mod tests {
     #[test]
     fn test_default_network_config() {
         let config = NetworkConfig::default();
+        #[cfg(target_os = "windows")]
         assert_eq!(config.easytier_path, PathBuf::from("easytier-core.exe"));
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(config.easytier_path, PathBuf::from("easytier-core"));
         assert_eq!(config.config_dir, PathBuf::from("./config"));
     }
 
