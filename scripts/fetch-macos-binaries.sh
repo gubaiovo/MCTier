@@ -30,6 +30,31 @@ esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_DIR="$REPO_ROOT/src-tauri/resources/binaries"
+
+# A successful actions/cache restore already contains the exact pinned files.
+# Verify both files before skipping the network download; an incomplete or
+# tampered cache falls through to the normal archive verification path.
+cached_ok=true
+for name in easytier-core easytier-cli; do
+  if [[ ! -f "$TARGET_DIR/$name" ]]; then
+    cached_ok=false
+    continue
+  fi
+  if [[ "$name" == "easytier-core" ]]; then
+    expected="$CORE_SHA256"
+  else
+    expected="$CLI_SHA256"
+  fi
+  if ! printf '%s  %s\n' "$expected" "$TARGET_DIR/$name" | shasum -a 256 --check >/dev/null; then
+    cached_ok=false
+  fi
+done
+if [[ "$cached_ok" == "true" ]]; then
+  chmod 755 "$TARGET_DIR/easytier-core" "$TARGET_DIR/easytier-cli"
+  echo "Pinned EasyTier macOS binaries already verified; skipping download."
+  exit 0
+fi
+
 TEMP_PARENT="${TMPDIR:-/tmp}"
 TEMP_PARENT="${TEMP_PARENT%/}"
 WORK_DIR="$(mktemp -d "$TEMP_PARENT/mctier-fetch.XXXXXX")"

@@ -6,7 +6,7 @@
 
 | 触发方式 | 检查与构建 | Artifact | GitHub Release |
 | --- | --- | --- | --- |
-| `pull_request` | 前端、Rust、许可证检查；Windows NSIS、macOS Intel DMG、macOS Apple Silicon DMG、Android debug APK；全部产物做冒烟验证 | 不上传（只验证） | 否 |
+| `pull_request` | 前端、Rust、许可证检查；Windows NSIS、macOS Intel DMG、macOS Apple Silicon DMG、Android debug APK；全部产物做冒烟验证 | 上传 macOS/Android PR 包，保留 3 天；Windows 仅在 Npcap 门禁获批时上传 | 否 |
 | push 到 `master` | 完整检查与三端构建 | 开发版，保留 14 天 | 否 |
 | push `vX.Y.Z` | 完整检查、正式签名、Android release APK/AAB | 保留 30 天 | 正式 Release |
 | push `vX.Y.Z-rc.N` | 与正式版相同 | 保留 30 天 | prerelease，不标记 Latest |
@@ -14,6 +14,8 @@
 | 每日 02:00（Asia/Shanghai） | Nightly 完整检查与三端构建 | 保留 7 天 | 否 |
 
 Android 当前只发布 `arm64-v8a`。这是源码现状决定的：EasyTier JNI 与 LocalVQE 原生库目前只在该 ABI 下存在。
+
+所有平台复用 GitHub Actions 缓存：npm 使用 `setup-node` 缓存，Rust 使用 `Swatinem/rust-cache`，Gradle 使用 `setup-gradle`；macOS EasyTier 二进制还按目标架构和版本单独缓存，并在命中后重新校验 SHA-256。
 
 ## Release 前的仓库设置
 
@@ -37,7 +39,7 @@ Android 当前只发布 `arm64-v8a`。这是源码现状决定的：EasyTier JNI
 | `APPLE_APP_SPECIFIC_PASSWORD` | Apple ID 的 app-specific password |
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
 
-PR、开发版和 Nightly 的 macOS 包使用 ad-hoc 签名；正式标签构建使用 Developer ID 签名并由 Tauri 执行公证。
+PR、开发版和 Nightly 的 macOS 包使用 ad-hoc 签名并上传 Artifact；正式标签构建使用 Developer ID 签名并由 Tauri 执行公证。
 桌面端弹幕与游戏 HUD 使用透明悬浮窗，因此 `tauri.conf.json` 启用了 `app.macOSPrivateApi`；这类构建面向 GitHub Release 的 Developer ID 分发，不适用于 Mac App Store 审核。
 
 ### Android

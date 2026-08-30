@@ -316,6 +316,15 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
 
+      - name: Cache verified macOS EasyTier binaries
+        if: runner.os == 'macOS'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            src-tauri/resources/binaries/easytier-core
+            src-tauri/resources/binaries/easytier-cli
+          key: mctier-easytier-macos-${{ matrix.target }}-v2.5.0
+
       - name: Install frontend dependencies
         run: npm ci
 
@@ -493,7 +502,10 @@ jobs:
           '@
 
       - name: Stage desktop package
-        if: github.event_name != 'pull_request'
+        if: >-
+          runner.os == 'macOS' ||
+          (runner.os == 'Windows' &&
+           (github.event_name != 'pull_request' || vars.NPCAP_REDISTRIBUTION_APPROVED == 'true'))
         run: |
           set -euo pipefail
           mkdir -p staging
@@ -507,7 +519,10 @@ jobs:
           test -n "$(find staging -maxdepth 1 -type f -print -quit)"
 
       - name: Upload desktop package
-        if: github.event_name != 'pull_request'
+        if: >-
+          runner.os == 'macOS' ||
+          (runner.os == 'Windows' &&
+           (github.event_name != 'pull_request' || vars.NPCAP_REDISTRIBUTION_APPROVED == 'true'))
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: packages-${{ needs.metadata.outputs.channel }}-${{ matrix.id }}
@@ -593,7 +608,6 @@ jobs:
           unzip -l "$apk" | grep -q 'assets/THIRD_PARTY_NOTICES.md'
 
       - name: Stage Android packages
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           mkdir -p staging
@@ -608,7 +622,6 @@ jobs:
           fi
 
       - name: Upload Android packages
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: packages-${{ needs.metadata.outputs.channel }}-android-arm64
