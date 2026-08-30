@@ -11,7 +11,7 @@
   background: rgba(16, 18, 24, 0.78);
   border: 1px solid rgba(124, 207, 0, 0.25);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
   pointer-events: none;
   backdrop-filter: blur(6px);
 }

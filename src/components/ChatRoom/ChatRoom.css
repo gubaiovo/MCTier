@@ -605,7 +605,7 @@
 .chat-quote {
   display: block;
   width: 100%;
-  border-left: 3px solid #52C41A;
+  border-left: 3px solid #52c41a;
   border-top: 0;
   border-right: 0;
   border-bottom: 0;
@@ -624,7 +624,9 @@
   cursor: pointer;
 }
 
-.chat-quote:hover { filter: brightness(1.12); }
+.chat-quote:hover {
+  filter: brightness(1.12);
+}
 
 .message-text-body {
   display: inline;
@@ -636,8 +638,13 @@
 }
 
 @keyframes chat-message-content-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.22; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.22;
+  }
 }
 .chat-message.own .chat-quote {
   color: rgba(6, 33, 10, 0.7);
@@ -654,12 +661,20 @@
   transition: opacity 0.15s ease;
   z-index: 4;
 }
-.message-hover-actions { display: none !important; }
+.message-hover-actions {
+  display: none !important;
+}
 
-.chat-message.own .message-hover-actions { left: -58px; }
-.chat-message.other .message-hover-actions { right: -30px; }
+.chat-message.own .message-hover-actions {
+  left: -58px;
+}
+.chat-message.other .message-hover-actions {
+  right: -30px;
+}
 .chat-message:hover .message-hover-actions,
-.message-hover-actions:focus-within { opacity: 1; }
+.message-hover-actions:focus-within {
+  opacity: 1;
+}
 
 .message-action-btn {
   background: transparent;
@@ -670,8 +685,12 @@
   transition: color 0.15s ease;
 }
 
-.message-action-btn:hover { color: #52C41A; }
-.message-recall-btn:hover { color: #ff7875; }
+.message-action-btn:hover {
+  color: #52c41a;
+}
+.message-recall-btn:hover {
+  color: #ff7875;
+}
 
 .chat-message-context-menu {
   position: fixed;
@@ -681,7 +700,7 @@
   border: 1px solid color-mix(in srgb, var(--text-color) 18%, transparent);
   border-radius: 7px;
   background: var(--bg-color);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
 .chat-message-context-item {
   width: 100%;
@@ -697,16 +716,28 @@
   text-align: left;
   cursor: pointer;
 }
-.chat-message-context-item:hover { background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
-.chat-message-context-item svg { flex: 0 0 auto; color: color-mix(in srgb, var(--text-color) 68%, transparent); }
-.chat-message-context-danger:hover { color: #d9363e; background: rgba(217, 54, 62, .1); }
-.chat-message-context-danger:hover svg { color: #d9363e; }
+.chat-message-context-item:hover {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+.chat-message-context-item svg {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--text-color) 68%, transparent);
+}
+.chat-message-context-danger:hover {
+  color: #d9363e;
+  background: rgba(217, 54, 62, 0.1);
+}
+.chat-message-context-danger:hover svg {
+  color: #d9363e;
+}
 
 .message-content-recalled {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px dashed rgba(255, 255, 255, 0.12);
 }
-.message-content-recalled::after { display: none; }
+.message-content-recalled::after {
+  display: none;
+}
 .message-recalled-text {
   color: rgba(255, 255, 255, 0.48);
   font-size: 12px;
@@ -729,12 +760,26 @@
   width: calc(100% - 32px);
   margin: 0 16px 8px;
 }
-.reply-preview-bar { width: 3px; height: 30px; border-radius: 2px; background: #52C41A; }
-.reply-preview-body { flex: 1; min-width: 0; }
-.reply-preview-name { font-size: 11px; color: #52C41A; }
+.reply-preview-bar {
+  width: 3px;
+  height: 30px;
+  border-radius: 2px;
+  background: #52c41a;
+}
+.reply-preview-body {
+  flex: 1;
+  min-width: 0;
+}
+.reply-preview-name {
+  font-size: 11px;
+  color: #52c41a;
+}
 .reply-preview-text {
-  font-size: 12px; color: rgba(255, 255, 255, 0.7);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .reply-preview-close {
   width: 26px;
@@ -751,7 +796,10 @@
   cursor: pointer;
   padding: 0;
   line-height: 1;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 .reply-preview-close:hover {
   background: rgba(255, 255, 255, 0.14);

@@ -111,25 +111,13 @@ export const usePlayerMute = () => {
  * 使用 UI 状态
  */
 export const useUIState = () => {
-  const statusWindowCollapsed = useAppStore(
-    (state) => state.statusWindowCollapsed
-  );
-  const toggleStatusWindowCollapsed = useAppStore(
-    (state) => state.toggleStatusWindowCollapsed
-  );
-  const setStatusWindowCollapsed = useAppStore(
-    (state) => state.setStatusWindowCollapsed
-  );
-  const statusWindowPosition = useAppStore(
-    (state) => state.statusWindowPosition
-  );
-  const setStatusWindowPosition = useAppStore(
-    (state) => state.setStatusWindowPosition
-  );
+  const statusWindowCollapsed = useAppStore((state) => state.statusWindowCollapsed);
+  const toggleStatusWindowCollapsed = useAppStore((state) => state.toggleStatusWindowCollapsed);
+  const setStatusWindowCollapsed = useAppStore((state) => state.setStatusWindowCollapsed);
+  const statusWindowPosition = useAppStore((state) => state.statusWindowPosition);
+  const setStatusWindowPosition = useAppStore((state) => state.setStatusWindowPosition);
   const mainWindowVisible = useAppStore((state) => state.mainWindowVisible);
-  const setMainWindowVisible = useAppStore(
-    (state) => state.setMainWindowVisible
-  );
+  const setMainWindowVisible = useAppStore((state) => state.setMainWindowVisible);
 
   return {
     statusWindowCollapsed,
@@ -162,9 +150,7 @@ export const useConfig = () => {
  * @param playerId 玩家 ID
  */
 export const usePlayer = (playerId: string) => {
-  const player = useAppStore((state) =>
-    state.players.find((p) => p.id === playerId)
-  );
+  const player = useAppStore((state) => state.players.find((p) => p.id === playerId));
   const updatePlayerStatus = useAppStore((state) => state.updatePlayerStatus);
   const isPlayerMuted = useAppStore((state) => state.isPlayerMuted);
 
@@ -187,9 +173,7 @@ export const usePlayer = (playerId: string) => {
  * 监听玩家列表变化
  * @param callback 回调函数
  */
-export const usePlayersChange = (
-  callback: (players: Player[]) => void
-) => {
+export const usePlayersChange = (callback: (players: Player[]) => void) => {
   const players = useAppStore((state) => state.players);
 
   useEffect(() => {
@@ -201,9 +185,7 @@ export const usePlayersChange = (
  * 监听大厅变化
  * @param callback 回调函数
  */
-export const useLobbyChange = (
-  callback: (lobby: Lobby | null) => void
-) => {
+export const useLobbyChange = (callback: (lobby: Lobby | null) => void) => {
   const lobby = useAppStore((state) => state.lobby);
 
   useEffect(() => {
@@ -215,9 +197,7 @@ export const useLobbyChange = (
  * 监听应用状态变化
  * @param callback 回调函数
  */
-export const useAppStateChange = (
-  callback: (appState: string) => void
-) => {
+export const useAppStateChange = (callback: (appState: string) => void) => {
   const appState = useAppStore((state) => state.appState);
 
   useEffect(() => {
@@ -229,9 +209,7 @@ export const useAppStateChange = (
  * 监听配置变化
  * @param callback 回调函数
  */
-export const useConfigChange = (
-  callback: (config: UserConfig) => void
-) => {
+export const useConfigChange = (callback: (config: UserConfig) => void) => {
   const config = useAppStore((state) => state.config);
 
   useEffect(() => {

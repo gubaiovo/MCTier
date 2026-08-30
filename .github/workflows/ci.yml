@@ -162,12 +162,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Lint (legacy findings remain visible)
-        continue-on-error: true
+      - name: Lint
         run: npm run lint
 
-      - name: Formatting check (legacy findings remain visible)
-        continue-on-error: true
+      - name: Formatting check
         run: npm run format:check
 
       - name: Typecheck and production frontend build
@@ -505,17 +503,38 @@ jobs:
         shell: pwsh
         env:
           TARGET: ${{ matrix.target }}
+          BUNDLE_NPCAP: ${{ vars.NPCAP_REDISTRIBUTION_APPROVED == 'true' }}
         run: |
           $arguments = @('run', 'tauri', 'build', '--', '--target', $env:TARGET, '--bundles', 'nsis', '--ci')
+          if ($env:BUNDLE_NPCAP -eq 'true') {
+            $arguments += @('--features', 'bundled-npcap')
+          }
           if ($env:MCTIER_TAURI_SIGNING_CONFIG) {
             $arguments += @('--config', $env:MCTIER_TAURI_SIGNING_CONFIG)
           }
           & npm @arguments
           if ($LASTEXITCODE -ne 0) { throw "Tauri build failed with exit code $LASTEXITCODE" }
 
-      - name: Build ad-hoc signed macOS DMG
+      - name: Build ad-hoc signed macOS app
         if: runner.os == 'macOS' && needs.metadata.outputs.publish != 'true'
-        run: npm run tauri build -- --target "${{ matrix.target }}" --bundles dmg --ci
+        run: npm run tauri build -- --target "${{ matrix.target }}" --bundles app --ci
+
+      - name: Create deterministic macOS test disk image
+        if: runner.os == 'macOS' && needs.metadata.outputs.publish != 'true'
+        run: |
+          set -euo pipefail
+          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          app="$(find "$bundle_root/macos" -maxdepth 1 -name '*.app' -type d -print -quit)"
+          test -n "$app"
+
+          payload="$(mktemp -d "$RUNNER_TEMP/mctier-dmg.XXXXXX")"
+          cp -R "$app" "$payload/"
+          ln -s /Applications "$payload/Applications"
+
+          mkdir -p "$bundle_root/dmg"
+          dmg="$bundle_root/dmg/MCTier_${{ matrix.id }}.dmg"
+          hdiutil create -volname MCTier -srcfolder "$payload" -ov -format UDZO "$dmg"
+          test -f "$dmg"
 
       - name: Build signed and notarized macOS DMG
         if: runner.os == 'macOS' && needs.metadata.outputs.publish == 'true'
@@ -561,31 +580,20 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app"
           hdiutil detach "$mount_point"
 
-      - name: Enforce Npcap redistribution approval
-        if: >-
-          runner.os == 'Windows' &&
-          github.event_name != 'pull_request' &&
-          vars.NPCAP_REDISTRIBUTION_APPROVED != 'true'
-        shell: pwsh
-        run: |
-          throw @'
-          Refusing to upload a Windows artifact because Packet.dll is an Npcap proprietary
-          component and THIRD_PARTY_NOTICES.md records that no OEM redistribution license is
-          currently held. After obtaining permission, set the repository Actions variable
-          NPCAP_REDISTRIBUTION_APPROVED=true.
-          '@
-
       - name: Stage desktop package
-        if: >-
-          runner.os == 'macOS' ||
-          (runner.os == 'Windows' &&
-           (github.event_name != 'pull_request' || vars.NPCAP_REDISTRIBUTION_APPROVED == 'true'))
         run: |
           set -euo pipefail
           mkdir -p staging
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" \
               -maxdepth 1 -name '*.exe' -type f -exec cp '{}' staging/ \;
+            if [[ "${{ vars.NPCAP_REDISTRIBUTION_APPROVED }}" != "true" ]]; then
+              printf '%s\n' \
+                'This public test package does not redistribute Npcap Packet.dll.' \
+                'Install official Npcap from https://npcap.com before creating a lobby.' \
+                'Enabling WinPcap API-compatible Mode is recommended.' \
+                >staging/WINDOWS-NPCAP-REQUIREMENT.txt
+            fi
           else
             find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" \
               -maxdepth 1 -name '*.dmg' -type f -exec cp '{}' staging/ \;
@@ -593,10 +601,6 @@ jobs:
           test -n "$(find staging -maxdepth 1 -type f -print -quit)"
 
       - name: Upload desktop package
-        if: >-
-          runner.os == 'macOS' ||
-          (runner.os == 'Windows' &&
-           (github.event_name != 'pull_request' || vars.NPCAP_REDISTRIBUTION_APPROVED == 'true'))
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: packages-${{ needs.metadata.outputs.channel }}-${{ matrix.id }}
@@ -657,12 +661,35 @@ jobs:
       - name: Build signed release APK and AAB
         if: needs.metadata.outputs.publish == 'true'
         working-directory: MCTier-Android
-        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            extra=()
+            if (( attempt > 1 )); then extra+=(--refresh-dependencies); fi
+            if ./gradlew :app:assembleRelease :app:bundleRelease \
+                 --no-daemon --stacktrace "${extra[@]}"; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then exit 1; fi
+            echo "Gradle dependency resolution failed (attempt $attempt/3); retrying..." >&2
+            sleep $((attempt * 15))
+          done
 
       - name: Build debug APK
         if: needs.metadata.outputs.publish != 'true'
         working-directory: MCTier-Android
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            extra=()
+            if (( attempt > 1 )); then extra+=(--refresh-dependencies); fi
+            if ./gradlew :app:assembleDebug --no-daemon --stacktrace "${extra[@]}"; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then exit 1; fi
+            echo "Gradle dependency resolution failed (attempt $attempt/3); retrying..." >&2
+            sleep $((attempt * 15))
+          done
 
       - name: Smoke-test APK and release bundle
         run: |

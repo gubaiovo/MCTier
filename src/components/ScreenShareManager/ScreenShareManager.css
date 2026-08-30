@@ -229,8 +229,12 @@
   font-weight: 500;
 }
 
-.viewer-info.active { color: rgba(239, 68, 68, 0.9); }
-.viewer-info.waiting { color: rgba(255, 255, 255, 0.45); }
+.viewer-info.active {
+  color: rgba(239, 68, 68, 0.9);
+}
+.viewer-info.waiting {
+  color: rgba(255, 255, 255, 0.45);
+}
 
 .share-badges {
   display: flex;
@@ -265,7 +269,8 @@
 }
 
 @keyframes pulse-viewing {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -352,7 +357,6 @@
   color: rgba(255, 255, 255, 0.8);
   font-size: 14px;
 }
-
 
 /* 屏幕查看覆盖层 */
 .screen-viewer-overlay {
@@ -509,8 +513,12 @@ html[data-theme='light'] .empty-hint,
 html[data-theme='light'] .share-start-time {
   color: #768291;
 }
-html[data-theme='light'] .viewer-info.active { color: #c7353a; }
-html[data-theme='light'] .viewer-info.waiting { color: #687585; }
+html[data-theme='light'] .viewer-info.active {
+  color: #c7353a;
+}
+html[data-theme='light'] .viewer-info.waiting {
+  color: #687585;
+}
 html[data-theme='light'] .share-item,
 html[data-theme='light'] .share-item.my-share {
   background: #ffffff;

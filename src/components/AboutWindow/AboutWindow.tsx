@@ -72,7 +72,11 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
   return (
     <div className="about-window">
       {/* 顶部拖拽区域 */}
-      <div className="about-window-drag-area" data-tauri-drag-region onMouseDown={startWindowDrag} />
+      <div
+        className="about-window-drag-area"
+        data-tauri-drag-region
+        onMouseDown={startWindowDrag}
+      />
 
       <motion.div
         className="about-window-content"

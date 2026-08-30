@@ -220,15 +220,16 @@ MCTier 承诺在提供对应发布版本期间持续保持上述源码与补丁�
 
 ## 7. Windows 端其他内嵌二进制 / Other Bundled Windows Binaries
 
-以下二进制随 EasyTier 官方 Windows 发布包一同获得，构建时内嵌进 `MCTier.exe`，
-运行期由 `resource_manager.rs` 释放到应用数据目录，供 `easytier-core.exe` 使用。
-均**未经修改**，SHA-256 可独立复核。
+以下二进制随 EasyTier 官方 Windows 发布包一同获得，均**未经修改**，SHA-256
+可独立复核。Wintun 与 WinDivert 由桌面程序内嵌并在运行期释放；Npcap 的
+`Packet.dll` 仅允许取得 OEM 再分发许可的构建通过 `bundled-npcap` Cargo feature
+显式内嵌。公开 CI 包默认不启用该 feature，而是读取用户自行安装的官方 Npcap。
 
 | 组件 | 版本 | 许可证 | 版权 | SHA-256 | 是否修改 |
 | --- | --- | --- | --- | --- | --- |
 | `wintun.dll` | 0.14.1 (amd64) | Wintun Prebuilt Binaries License | Copyright (C) 2018-2021 WireGuard LLC. All Rights Reserved. | `E5DA8447DC2C320EDC0FC52FA01885C103DE8C118481F683643CACC3220DAFCE` | 否 |
 | `WinDivert64.sys` | 2.2.2 | **LGPL-3.0**（双许可中所选分支） | Copyright (C) Basil Nemeth / WinDivert contributors | `8DA085332782708D8767BCACE5327A6EC7283C17CFB85E40B03CD2323A90DDC2` | 否 |
-| `Packet.dll` | Npcap 1.79 | 专有（Npcap License）— 见 §8 | Copyright (c) 2023, Insecure.Com LLC. | `C7C03A87EAC7243CCBE331554624B18803010B740E311FC8CFDDB573096EACAC` | 否 |
+| `Packet.dll` | Npcap 1.79 | 专有（Npcap License）— 见 §8 | Copyright (c) 2023, Insecure.Com LLC. | `C7C03A87EAC7243CCBE331554624B18803010B740E311FC8CFDDB573096EACAC` | 否；公开包不内嵌 |
 
 ### Wintun
 
@@ -306,16 +307,19 @@ Npcap 再分发面仅剩 `Packet.dll` 一项。
 两处均为回退路径，具备可移除性；该改造需要重新构建 EasyTier 二进制，
 因此排在后续版本落地，完成后会将构建 commit、参数与 SHA-256 登记入本文件。
 
-### 8.3 处理计划 / Remediation Plan
+### 8.3 当前构建策略 / Current Build Policy
 
-1. ✅ 已完成：停止捆绑 `Packet.lib`（见 §8.1）；
-2. ⏳ 进行中：重新编译 EasyTier（关闭 `pnet` 默认 feature）以移除 `packet.dll` 的启动期
-   硬依赖，之后新的 Windows 发布包将不再捆绑 `Packet.dll`，改为在缺失时引导用户自行前往
-   https://npcap.com 下载安装（Npcap 官方亦推荐此方式）；
-3. 若后续取得 Npcap OEM Redistribution License，将在此处写明"本项目已取得再分发许可"
-   （不公开合同细节）。
+1. ✅ 已停止捆绑 `Packet.lib`（见 §8.1）；
+2. ✅ 公开 CI、PR、Nightly 与未获许可的 Release 构建不内嵌 `Packet.dll`。程序会在
+   `%WINDIR%\System32\Npcap\Packet.dll` 或兼容安装路径中寻找用户通过官方安装器安装的
+   Npcap，并将其复制到 EasyTier 的私有运行目录；缺失时给出明确安装提示；
+3. 仅当仓库管理员确认取得 Npcap OEM Redistribution License，并设置受控变量
+   `NPCAP_REDISTRIBUTION_APPROVED=true` 时，CI 才启用 `bundled-npcap` feature；
+4. 后续仍计划重新编译 EasyTier（关闭 `pnet` 默认 feature）以彻底移除 `packet.dll` 的
+   启动期硬依赖。
 
-在上述整改落地前，使用者如需自行构建，请自 https://npcap.com 获取 Npcap 并遵守其许可证。
+公开 Windows 包的使用者应自行从 https://npcap.com 获取 Npcap 并遵守其许可证；建议安装时
+启用 WinPcap API-compatible Mode。
 
 ---
 

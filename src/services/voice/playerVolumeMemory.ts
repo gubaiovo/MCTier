@@ -22,7 +22,9 @@ function read(): VolumeMap {
 function write(map: VolumeMap): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(map));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export const playerVolumeMemory = {

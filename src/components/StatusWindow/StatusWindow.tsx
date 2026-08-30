@@ -34,19 +34,19 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ onClose }) => {
   useEffect(() => {
     const prevCount = prevPlayerCountRef.current;
     const currentCount = players.length;
-    
+
     if (currentCount > prevCount) {
       // 有玩家加入
-      audioService.play('userJoined').catch(err => {
+      audioService.play('userJoined').catch((err) => {
         console.error('播放用户加入音效失败:', err);
       });
     } else if (currentCount < prevCount) {
       // 有玩家离开
-      audioService.play('userLeft').catch(err => {
+      audioService.play('userLeft').catch((err) => {
         console.error('播放用户离开音效失败:', err);
       });
     }
-    
+
     prevPlayerCountRef.current = currentCount;
   }, [players.length]);
 
@@ -57,7 +57,7 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ onClose }) => {
     if (target.closest('button')) {
       return; // 如果点击的是按钮，不触发拖拽
     }
-    
+
     setIsDragging(true);
     dragRef.current = {
       startX: e.clientX - position.x,
@@ -145,9 +145,7 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ onClose }) => {
               ease: 'easeInOut',
             }}
           />
-          <span className="status-window-title">
-            {lobby?.name || tl('大厅', 'Lobby')}
-          </span>
+          <span className="status-window-title">{lobby?.name || tl('大厅', 'Lobby')}</span>
         </div>
 
         <div className="status-window-header-right">
@@ -224,9 +222,7 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ onClose }) => {
               >
                 <div className="status-window-info">
                   <span className="status-window-info-label">{tl('虚拟 IP:', 'Virtual IP:')}</span>
-                  <span className="status-window-info-value">
-                    {lobby.virtualIp}
-                  </span>
+                  <span className="status-window-info-value">{lobby.virtualIp}</span>
                 </div>
                 <Button
                   type="default"

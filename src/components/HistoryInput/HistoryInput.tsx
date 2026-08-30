@@ -49,9 +49,7 @@ export const HistoryInput: React.FC<HistoryInputProps> = ({
     if (!value || value.trim() === '') {
       setFilteredHistory(history);
     } else {
-      const filtered = history.filter(item =>
-        item.toLowerCase().includes(value.toLowerCase())
-      );
+      const filtered = history.filter((item) => item.toLowerCase().includes(value.toLowerCase()));
       setFilteredHistory(filtered);
     }
   }, [value, history]);
@@ -90,14 +88,14 @@ export const HistoryInput: React.FC<HistoryInputProps> = ({
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const currentValue = e.target.value?.trim();
-    
+
     // 保存到历史记录
     if (currentValue && currentValue.length > 0) {
-      const newHistory = [
-        currentValue,
-        ...history.filter(item => item !== currentValue)
-      ].slice(0, maxHistory);
-      
+      const newHistory = [currentValue, ...history.filter((item) => item !== currentValue)].slice(
+        0,
+        maxHistory
+      );
+
       setHistory(newHistory);
       localStorage.setItem(`mctier_history_${historyKey}`, JSON.stringify(newHistory));
     }
@@ -126,7 +124,7 @@ export const HistoryInput: React.FC<HistoryInputProps> = ({
         onBlur={handleBlur}
         autoComplete="off"
       />
-      
+
       <AnimatePresence>
         {showHistory && filteredHistory.length > 0 && (
           <motion.div
@@ -138,24 +136,16 @@ export const HistoryInput: React.FC<HistoryInputProps> = ({
           >
             {/* 真实的不透明背景层 */}
             <div className="history-dropdown-bg"></div>
-            
+
             <div className="history-header">
               <span className="history-title">{tl('历史记录', 'History')}</span>
-              <button
-                className="history-clear-btn"
-                onClick={handleClearHistory}
-                type="button"
-              >
+              <button className="history-clear-btn" onClick={handleClearHistory} type="button">
                 {tl('清空', 'Clear')}
               </button>
             </div>
             <div className="history-list">
               {filteredHistory.map((item, index) => (
-                <div
-                  key={index}
-                  className="history-item"
-                  onClick={() => handleSelectHistory(item)}
-                >
+                <div key={index} className="history-item" onClick={() => handleSelectHistory(item)}>
                   {item}
                 </div>
               ))}

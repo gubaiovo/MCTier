@@ -15,7 +15,7 @@ interface Bullet {
   color: string;
   fontSize: number;
   duration: number; // s
-  top: number;      // px
+  top: number; // px
   kind: 'text' | 'image';
   image?: string;
   copyText?: string;
@@ -77,18 +77,24 @@ export const DanmakuOverlay: React.FC = () => {
     let track = 0;
     let earliest = Infinity;
     for (let i = 0; i < tracks; i++) {
-      if (trackFreeAt.current[i] <= now) { track = i; break; }
-      if (trackFreeAt.current[i] < earliest) { earliest = trackFreeAt.current[i]; track = i; }
+      if (trackFreeAt.current[i] <= now) {
+        track = i;
+        break;
+      }
+      if (trackFreeAt.current[i] < earliest) {
+        earliest = trackFreeAt.current[i];
+        track = i;
+      }
     }
     const speed = Number.isFinite(p.speed) ? Math.max(40, Math.min(1000, p.speed)) : 140;
     const fontSize = Number.isFinite(p.fontSize) ? Math.max(12, Math.min(72, p.fontSize)) : 24;
     const imgH = fontSize * 1.55;
     const estWidth = isImage
-      ? (text.length * fontSize * 0.62) + fontSize * 3.6 + 50
+      ? text.length * fontSize * 0.62 + fontSize * 3.6 + 50
       : text.length * fontSize * 0.62 + 40;
     const distance = vw + estWidth;
     const duration = distance / speed; // s
-    const releaseDelay = (estWidth + 30) / speed * 1000;
+    const releaseDelay = ((estWidth + 30) / speed) * 1000;
     trackFreeAt.current[track] = now + releaseDelay;
 
     const lineHeight = (isImage ? imgH : fontSize) * 1.6;
@@ -155,13 +161,18 @@ export const DanmakuOverlay: React.FC = () => {
             if (target !== hoverIdRef.current) setHoverId(target);
             setIgnore(target === null);
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         busy = false;
       }
       timer = window.setTimeout(tick, 50) as unknown as number;
     };
     tick();
-    return () => { stopped = true; window.clearTimeout(timer); };
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, [setIgnore]);
 
   useEffect(() => {
@@ -189,14 +200,20 @@ export const DanmakuOverlay: React.FC = () => {
     let un: (() => void) | undefined;
     listen<DanmakuPayload>('danmaku-msg', (e) => {
       if (e.payload && typeof e.payload === 'object') spawn(e.payload);
-    }).then((fn) => { un = fn; });
+    }).then((fn) => {
+      un = fn;
+    });
     // 语言同步：主窗口切换语言时本窗口随之刷新
     let unLang: (() => void) | undefined;
     listen<string>('mctier-lang-changed', (e) => {
       const lang = e.payload === 'en' ? 'en' : 'zh';
-      void import('../../i18n').then(({ applyLanguageLocal }) => { applyLanguageLocal(lang); });
+      void import('../../i18n').then(({ applyLanguageLocal }) => {
+        applyLanguageLocal(lang);
+      });
       setLangTick((t) => t + 1);
-    }).then((fn) => { unLang = fn; });
+    }).then((fn) => {
+      unLang = fn;
+    });
     return () => {
       if (un) un();
       if (unLang) unLang();
@@ -215,35 +232,51 @@ export const DanmakuOverlay: React.FC = () => {
   }, []);
 
   // 点击按钮后立即恢复飘动：标记为已操作并取消悬停暂停
-  const releaseAfterAction = useCallback((id: number) => {
-    actionedRef.current.add(id);
-    setHoverId(null);
-    setIgnore(true);
-  }, [setIgnore]);
+  const releaseAfterAction = useCallback(
+    (id: number) => {
+      actionedRef.current.add(id);
+      setHoverId(null);
+      setIgnore(true);
+    },
+    [setIgnore]
+  );
 
-  const doCopy = useCallback(async (b: Bullet) => {
-    const t = b.copyText ?? b.text;
-    try {
-      const mod = await import('@tauri-apps/plugin-clipboard-manager');
-      await mod.writeText(t);
-      showToast(tl('已复制消息内容', 'Message content copied'));
-    } catch {
-      try { await navigator.clipboard.writeText(t); showToast(tl('已复制消息内容', 'Message content copied')); }
-      catch { showToast(tl('复制失败', 'Copy failed')); }
-    }
-    releaseAfterAction(b.id);
-  }, [showToast, releaseAfterAction]);
+  const doCopy = useCallback(
+    async (b: Bullet) => {
+      const t = b.copyText ?? b.text;
+      try {
+        const mod = await import('@tauri-apps/plugin-clipboard-manager');
+        await mod.writeText(t);
+        showToast(tl('已复制消息内容', 'Message content copied'));
+      } catch {
+        try {
+          await navigator.clipboard.writeText(t);
+          showToast(tl('已复制消息内容', 'Message content copied'));
+        } catch {
+          showToast(tl('复制失败', 'Copy failed'));
+        }
+      }
+      releaseAfterAction(b.id);
+    },
+    [showToast, releaseAfterAction]
+  );
 
-  const doDownload = useCallback(async (b: Bullet) => {
-    if (!b.image) { releaseAfterAction(b.id); return; }
-    try {
-      await invoke<string>('save_danmaku_image', { dataUrl: b.image });
-      showToast(tl('图片已保存到下载文件夹', 'Image saved to Downloads'));
-    } catch {
-      showToast(tl('保存失败', 'Save failed'));
-    }
-    releaseAfterAction(b.id);
-  }, [showToast, releaseAfterAction]);
+  const doDownload = useCallback(
+    async (b: Bullet) => {
+      if (!b.image) {
+        releaseAfterAction(b.id);
+        return;
+      }
+      try {
+        await invoke<string>('save_danmaku_image', { dataUrl: b.image });
+        showToast(tl('图片已保存到下载文件夹', 'Image saved to Downloads'));
+      } catch {
+        showToast(tl('保存失败', 'Save failed'));
+      }
+      releaseAfterAction(b.id);
+    },
+    [showToast, releaseAfterAction]
+  );
 
   return (
     <div className="danmaku-root" style={{ opacity, pointerEvents: 'none' }}>
@@ -252,7 +285,10 @@ export const DanmakuOverlay: React.FC = () => {
         return (
           <div
             key={b.id}
-            ref={(el) => { if (el) nodeRefs.current.set(b.id, el); else nodeRefs.current.delete(b.id); }}
+            ref={(el) => {
+              if (el) nodeRefs.current.set(b.id, el);
+              else nodeRefs.current.delete(b.id);
+            }}
             className={`danmaku-bullet${paused ? ' danmaku-pinned' : ''}`}
             style={{
               top: `${b.top}px`,
@@ -267,7 +303,13 @@ export const DanmakuOverlay: React.FC = () => {
             {b.kind === 'image' && b.image ? (
               <>
                 {b.text && <span className="danmaku-name">{b.text}</span>}
-                <img className="danmaku-img" src={b.image} alt="img" style={{ height: `${b.fontSize * 1.55}px`, maxWidth: `${b.fontSize * 3.6}px` }} draggable={false} />
+                <img
+                  className="danmaku-img"
+                  src={b.image}
+                  alt="img"
+                  style={{ height: `${b.fontSize * 1.55}px`, maxWidth: `${b.fontSize * 3.6}px` }}
+                  draggable={false}
+                />
               </>
             ) : (
               <span>{b.text}</span>
@@ -275,9 +317,13 @@ export const DanmakuOverlay: React.FC = () => {
             {paused && (
               <div className="danmaku-actions" ref={actionBtnRef}>
                 {b.kind === 'image' ? (
-                  <button className="danmaku-action-btn" onClick={() => doDownload(b)}>{tl('下载图片', 'Download')}</button>
+                  <button className="danmaku-action-btn" onClick={() => doDownload(b)}>
+                    {tl('下载图片', 'Download')}
+                  </button>
                 ) : (
-                  <button className="danmaku-action-btn" onClick={() => doCopy(b)}>{tl('复制内容', 'Copy')}</button>
+                  <button className="danmaku-action-btn" onClick={() => doCopy(b)}>
+                    {tl('复制内容', 'Copy')}
+                  </button>
                 )}
               </div>
             )}

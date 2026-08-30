@@ -61,10 +61,16 @@ class AudioService {
   }
 
   private persist() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(this.settings));
+    } catch {
+      /* ignore */
+    }
   }
 
-  getSettings(): SoundSettings { return { ...this.settings, custom: { ...this.settings.custom } }; }
+  getSettings(): SoundSettings {
+    return { ...this.settings, custom: { ...this.settings.custom } };
+  }
 
   /** 初始化所有音效（按自定义/默认源） */
   private initializeSounds() {
@@ -79,7 +85,8 @@ class AudioService {
       const custom = this.settings.custom[type];
       let src: string;
       if (!custom) src = new URL(DEFAULT_SRC[type], window.location.href).href;
-      else if (custom.startsWith('data:') || custom.startsWith('http')) src = custom; // data URL 或网络地址直接用
+      else if (custom.startsWith('data:') || custom.startsWith('http'))
+        src = custom; // data URL 或网络地址直接用
       else src = convertFileSrc(custom); // 本地文件路径
       const audio = new Audio(src);
       audio.preload = 'auto';
@@ -102,8 +109,14 @@ class AudioService {
   /** 播放指定音效 */
   async play(soundType: SoundType): Promise<void> {
     if (!this.enabled) return;
-    if (this.settings.mutedSounds?.[soundType]) { console.log('该音效已禁音，跳过:', soundType); return; }
-    if (this.inDnd()) { console.log('免打扰时段，跳过音效:', soundType); return; }
+    if (this.settings.mutedSounds?.[soundType]) {
+      console.log('该音效已禁音，跳过:', soundType);
+      return;
+    }
+    if (this.inDnd()) {
+      console.log('免打扰时段，跳过音效:', soundType);
+      return;
+    }
     try {
       const cached = this.sounds.get(soundType);
       if (!cached) return;
@@ -121,7 +134,9 @@ class AudioService {
   setVolume(volume: number) {
     const v = Math.max(0, Math.min(1, volume));
     this.settings.volume = v;
-    this.sounds.forEach((sound) => { sound.volume = v; });
+    this.sounds.forEach((sound) => {
+      sound.volume = v;
+    });
     this.persist();
   }
 
@@ -147,12 +162,20 @@ class AudioService {
     this.persist();
   }
 
-  setEnabled(enabled: boolean) { this.enabled = enabled; }
-  isEnabled(): boolean { return this.enabled; }
+  setEnabled(enabled: boolean) {
+    this.enabled = enabled;
+  }
+  isEnabled(): boolean {
+    return this.enabled;
+  }
   /** 获取禁音状态 */
-  isMuted(): boolean { return this.settings.muted; }
+  isMuted(): boolean {
+    return this.settings.muted;
+  }
   /** 读取设置（含muted） */
-  getFullSettings(): SoundSettings { return { ...this.settings, custom: { ...this.settings.custom } }; }
+  getFullSettings(): SoundSettings {
+    return { ...this.settings, custom: { ...this.settings.custom } };
+  }
 
   setMuted(muted: boolean) {
     this.settings.muted = muted;

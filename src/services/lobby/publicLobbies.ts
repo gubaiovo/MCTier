@@ -28,7 +28,10 @@ const DEFAULT_SIGNALING = 'wss://mctier.pmhs.top/signaling';
  * @param signalingServer 可选，自定义信令服务器地址
  * @param timeoutMs 超时时间（毫秒）
  */
-export function fetchPublicLobbies(signalingServer?: string, timeoutMs = 8000): Promise<PublicLobby[]> {
+export function fetchPublicLobbies(
+  signalingServer?: string,
+  timeoutMs = 8000
+): Promise<PublicLobby[]> {
   const url = signalingServer?.trim() || DEFAULT_SIGNALING;
   if (!isSafeSignalingServer(url)) {
     return Promise.reject(new Error('信令服务器地址无效'));
@@ -44,7 +47,11 @@ export function fetchPublicLobbies(signalingServer?: string, timeoutMs = 8000): 
     }
 
     const cleanup = () => {
-      try { ws.close(); } catch { /* ignore */ }
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
     };
 
     const timer = window.setTimeout(() => {
@@ -77,32 +84,40 @@ export function fetchPublicLobbies(signalingServer?: string, timeoutMs = 8000): 
             window.clearTimeout(timer);
             cleanup();
             const lobbies = Array.isArray(msg.lobbies) ? msg.lobbies : [];
-            resolve(lobbies.flatMap((lobby: unknown) => {
-              if (!lobby || typeof lobby !== 'object') return [];
-              const item = lobby as Record<string, unknown>;
-              const lobbyName = sanitizeUntrustedText(item.lobbyName, 64).trim();
-              const hostName = sanitizeUntrustedText(item.hostName, 64).trim();
-              if (!lobbyName || !hostName) return [];
+            resolve(
+              lobbies.flatMap((lobby: unknown) => {
+                if (!lobby || typeof lobby !== 'object') return [];
+                const item = lobby as Record<string, unknown>;
+                const lobbyName = sanitizeUntrustedText(item.lobbyName, 64).trim();
+                const hostName = sanitizeUntrustedText(item.hostName, 64).trim();
+                if (!lobbyName || !hostName) return [];
 
-              const playerCount = typeof item.playerCount === 'number' && Number.isFinite(item.playerCount)
-                ? Math.max(0, Math.min(100_000, Math.floor(item.playerCount)))
-                : 0;
-              const maxPlayers = typeof item.maxPlayers === 'number' && Number.isFinite(item.maxPlayers)
-                ? Math.max(1, Math.min(100_000, Math.floor(item.maxPlayers)))
-                : null;
-              const rawServerNode = typeof item.serverNode === 'string' ? item.serverNode.trim() : '';
+                const playerCount =
+                  typeof item.playerCount === 'number' && Number.isFinite(item.playerCount)
+                    ? Math.max(0, Math.min(100_000, Math.floor(item.playerCount)))
+                    : 0;
+                const maxPlayers =
+                  typeof item.maxPlayers === 'number' && Number.isFinite(item.maxPlayers)
+                    ? Math.max(1, Math.min(100_000, Math.floor(item.maxPlayers)))
+                    : null;
+                const rawServerNode =
+                  typeof item.serverNode === 'string' ? item.serverNode.trim() : '';
 
-              return [{
-                lobbyName,
-                hostName,
-                playerCount,
-                maxPlayers,
-                description: sanitizeUntrustedText(item.description ?? item.desc, 200).trim(),
-                serverNode: rawServerNode && isSafeServerNode(rawServerNode) && rawServerNode !== 'custom'
-                  ? rawServerNode
-                  : undefined,
-              }];
-            }));
+                return [
+                  {
+                    lobbyName,
+                    hostName,
+                    playerCount,
+                    maxPlayers,
+                    description: sanitizeUntrustedText(item.description ?? item.desc, 200).trim(),
+                    serverNode:
+                      rawServerNode && isSafeServerNode(rawServerNode) && rawServerNode !== 'custom'
+                        ? rawServerNode
+                        : undefined,
+                  },
+                ];
+              })
+            );
           }
         }
       } catch {

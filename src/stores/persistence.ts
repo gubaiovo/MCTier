@@ -24,7 +24,9 @@ const MAX_CONFIG_FILE_BYTES = 256 * 1024;
 const MAX_CONFIG_LIST_ITEMS = 64;
 
 const finiteNumberInRange = (value: unknown, min: number, max: number): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : undefined;
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(min, Math.min(max, value))
+    : undefined;
 
 const safeString = (value: unknown, maxLength: number): string | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -67,7 +69,8 @@ export const sanitizePersistedConfig = (value: unknown): UserConfig => {
   const input = value as Record<string, unknown>;
   const result: UserConfig = {};
 
-  if (input.language === 'system' || input.language === 'zh' || input.language === 'en') result.language = input.language;
+  if (input.language === 'system' || input.language === 'zh' || input.language === 'en')
+    result.language = input.language;
   const playerName = safeString(input.playerName, 64);
   if (playerName) result.playerName = playerName;
   if (isSafeImageDataUrl(input.avatarData)) result.avatarData = input.avatarData;
@@ -88,12 +91,18 @@ export const sanitizePersistedConfig = (value: unknown): UserConfig => {
   const voiceVolume = finiteNumberInRange(input.voiceVolume, 0, 1);
   if (opacity !== undefined) result.opacity = opacity;
   if (voiceVolume !== undefined) result.voiceVolume = voiceVolume;
-  if (typeof input.enableGpuRendering === 'boolean') result.enableGpuRendering = input.enableGpuRendering;
+  if (typeof input.enableGpuRendering === 'boolean')
+    result.enableGpuRendering = input.enableGpuRendering;
   if (typeof input.autoStartup === 'boolean') result.autoStartup = input.autoStartup;
 
-  if (input.advancedNetwork && typeof input.advancedNetwork === 'object' && !Array.isArray(input.advancedNetwork)) {
+  if (
+    input.advancedNetwork &&
+    typeof input.advancedNetwork === 'object' &&
+    !Array.isArray(input.advancedNetwork)
+  ) {
     const virtualDomain = (input.advancedNetwork as Record<string, unknown>).virtualDomain;
-    if (isSafeVirtualDomain(virtualDomain)) result.advancedNetwork = { virtualDomain: virtualDomain.trim() };
+    if (isSafeVirtualDomain(virtualDomain))
+      result.advancedNetwork = { virtualDomain: virtualDomain.trim() };
   }
 
   if (input.autoLobby && typeof input.autoLobby === 'object' && !Array.isArray(input.autoLobby)) {
@@ -105,16 +114,23 @@ export const sanitizePersistedConfig = (value: unknown): UserConfig => {
     const autoPlayerName = safeString(autoLobbyInput.playerName, 64);
     if (lobbyName) autoLobby.lobbyName = lobbyName;
     if (autoPlayerName) autoLobby.playerName = autoPlayerName;
-    if (typeof autoLobbyInput.useDomain === 'boolean') autoLobby.useDomain = autoLobbyInput.useDomain;
+    if (typeof autoLobbyInput.useDomain === 'boolean')
+      autoLobby.useDomain = autoLobbyInput.useDomain;
     // Intentionally omit autoLobbyInput.lobbyPassword.
     result.autoLobby = autoLobby;
   }
 
-  if (input.exitNodeConfig && typeof input.exitNodeConfig === 'object' && !Array.isArray(input.exitNodeConfig)) {
+  if (
+    input.exitNodeConfig &&
+    typeof input.exitNodeConfig === 'object' &&
+    !Array.isArray(input.exitNodeConfig)
+  ) {
     const exitInput = input.exitNodeConfig as Record<string, unknown>;
     const exitNodeConfig: NonNullable<UserConfig['exitNodeConfig']> = {};
-    if (typeof exitInput.enableExitNode === 'boolean') exitNodeConfig.enableExitNode = exitInput.enableExitNode;
-    if (typeof exitInput.enableAsExitNode === 'boolean') exitNodeConfig.enableAsExitNode = exitInput.enableAsExitNode;
+    if (typeof exitInput.enableExitNode === 'boolean')
+      exitNodeConfig.enableExitNode = exitInput.enableExitNode;
+    if (typeof exitInput.enableAsExitNode === 'boolean')
+      exitNodeConfig.enableAsExitNode = exitInput.enableAsExitNode;
     const proxyCidrs = normalizeStringList(exitInput.proxyCidrs, 128);
     const exitNodes = normalizeStringList(exitInput.exitNodes, 128);
     if (proxyCidrs) exitNodeConfig.proxyCidrs = proxyCidrs;
@@ -156,9 +172,7 @@ export const loadConfigFromStorage = (): UserConfig | null => {
 /**
  * 保存窗口位置到本地存储
  */
-export const saveWindowPositionToStorage = (
-  position: WindowPosition
-): void => {
+export const saveWindowPositionToStorage = (position: WindowPosition): void => {
   try {
     const safePosition = normalizeWindowPosition(position);
     if (!safePosition) return;

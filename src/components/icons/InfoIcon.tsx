@@ -18,26 +18,9 @@ export const InfoIcon: React.FC<InfoIconProps> = ({ size = 24, className = '' })
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="2"
-        fill="none"
-      />
-      <path
-        d="M12 16V12"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <circle
-        cx="12"
-        cy="8"
-        r="1"
-        fill="currentColor"
-      />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
+      <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="8" r="1" fill="currentColor" />
     </svg>
   );
 };

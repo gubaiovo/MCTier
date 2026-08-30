@@ -60,7 +60,7 @@ class FileShareService {
     try {
       // 注意：后端Rust参数名使用下划线命名
       await invoke('remove_shared_folder', { share_id: shareId });
-      this.localShares = this.localShares.filter(s => s.id !== shareId);
+      this.localShares = this.localShares.filter((s) => s.id !== shareId);
       console.log('✅ 删除共享成功:', shareId);
     } catch (error) {
       console.error('❌ 删除共享失败:', error);
@@ -101,11 +101,13 @@ class FileShareService {
   async getRemoteShares(peerIp: string): Promise<SharedFolderSummary[]> {
     try {
       console.log(`📡 [FileShareService] 正在获取远程共享: ${peerIp}`);
-      console.log(`📡 [FileShareService] 调用 invoke('get_remote_shares', { peerIp: '${peerIp}' })`);
-      
+      console.log(
+        `📡 [FileShareService] 调用 invoke('get_remote_shares', { peerIp: '${peerIp}' })`
+      );
+
       // Tauri会自动将驼峰命名peerIp转换为Rust的下划线命名peer_ip
       const shares = await invoke<SharedFolderSummary[]>('get_remote_shares', { peerIp });
-      
+
       console.log(`✅ [FileShareService] 成功获取 ${shares.length} 个共享`);
       if (shares.length > 0) {
         console.log(`📋 [FileShareService] 共享列表:`, shares);
@@ -146,11 +148,7 @@ class FileShareService {
   /**
    * 验证共享密码
    */
-  async verifyPassword(
-    peerIp: string,
-    shareId: string,
-    password: string
-  ): Promise<boolean> {
+  async verifyPassword(peerIp: string, shareId: string, password: string): Promise<boolean> {
     try {
       // 注意：后端Rust参数名使用下划线命名
       const result = await invoke<boolean>('verify_share_password', {
@@ -168,11 +166,7 @@ class FileShareService {
   /**
    * 获取文件下载URL
    */
-  async getDownloadUrl(
-    peerIp: string,
-    shareId: string,
-    filePath: string
-  ): Promise<string> {
+  async getDownloadUrl(peerIp: string, shareId: string, filePath: string): Promise<string> {
     try {
       // 注意：后端Rust参数名使用下划线命名
       const url = await invoke<string>('get_download_url', {
@@ -190,11 +184,7 @@ class FileShareService {
   /**
    * 更新玩家共享信息
    */
-  async updatePlayerShares(
-    playerId: string,
-    playerName: string,
-    virtualIp: string
-  ): Promise<void> {
+  async updatePlayerShares(playerId: string, playerName: string, virtualIp: string): Promise<void> {
     try {
       const shares = await this.getRemoteShares(virtualIp);
       this.playerShares.set(playerId, {

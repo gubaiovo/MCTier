@@ -8,10 +8,7 @@ interface LightbulbIconProps {
 /**
  * 灯泡图标组件（提示/想法）
  */
-export const LightbulbIcon: React.FC<LightbulbIconProps> = ({ 
-  size = 24, 
-  className = '' 
-}) => {
+export const LightbulbIcon: React.FC<LightbulbIconProps> = ({ size = 24, className = '' }) => {
   return (
     <svg
       width={size}
@@ -47,12 +44,7 @@ export const LightbulbIcon: React.FC<LightbulbIconProps> = ({
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path
-        d="M12 6v3"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+      <path d="M12 6v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 };

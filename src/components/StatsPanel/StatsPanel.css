@@ -15,7 +15,9 @@
   border-radius: 12px;
   padding: 14px 8px;
   text-align: center;
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
 }
 
 .stats-card:hover {
@@ -173,9 +175,15 @@
   justify-content: center;
 }
 
-.stats-partner-rank.rank-1 { background: #f5a623; }
-.stats-partner-rank.rank-2 { background: #9aa7b8; }
-.stats-partner-rank.rank-3 { background: #c87f43; }
+.stats-partner-rank.rank-1 {
+  background: #f5a623;
+}
+.stats-partner-rank.rank-2 {
+  background: #9aa7b8;
+}
+.stats-partner-rank.rank-3 {
+  background: #c87f43;
+}
 
 .stats-partner-name {
   flex: 1;
@@ -221,7 +229,15 @@ html[data-theme='light'] .stats-empty-mini {
   color: #364151;
 }
 
-html[data-theme='light'] .stats-donut-num { fill: #18202b !important; }
-html[data-theme='light'] .stats-donut-label { fill: #596574 !important; }
-html[data-theme='light'] .stats-donut circle:first-child { stroke: #dce1e7; }
-html[data-theme='light'] .stats-partner-item { background: #f4f6f8; }
+html[data-theme='light'] .stats-donut-num {
+  fill: #18202b !important;
+}
+html[data-theme='light'] .stats-donut-label {
+  fill: #596574 !important;
+}
+html[data-theme='light'] .stats-donut circle:first-child {
+  stroke: #dce1e7;
+}
+html[data-theme='light'] .stats-partner-item {
+  background: #f4f6f8;
+}

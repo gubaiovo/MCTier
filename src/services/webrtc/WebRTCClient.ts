@@ -30,7 +30,15 @@ import {
 } from '../../security/trustBoundary';
 
 export interface SignalingMessage {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'player-joined' | 'player-left' | 'status-update' | 'heartbeat' | 'chat-message';
+  type:
+    | 'offer'
+    | 'answer'
+    | 'ice-candidate'
+    | 'player-joined'
+    | 'player-left'
+    | 'status-update'
+    | 'heartbeat'
+    | 'chat-message';
   from?: string;
   to?: string;
   sdp?: string;
@@ -130,16 +138,16 @@ export class WebRTCClient {
   //   - 还可能选中不稳定的公网反射候选路径，导致语音忽断忽续。
   // 这里清空公网 STUN，只使用 host 候选，让连接固定走稳定的虚拟局域网直连路径。
   private iceServers: RTCIceServer[] = [];
-  
+
   // 虚拟IP地址
   private virtualIp: string | null = null;
-  
+
   // 虚拟域名
   private virtualDomain: string | null = null;
-  
+
   // 是否使用域名访问
   private useDomain: boolean = false;
-  
+
   // 信令服务器地址（创建者的虚拟IP）
   private signalingServerUrl: string = '';
   private chatToken: string = '';
@@ -148,13 +156,28 @@ export class WebRTCClient {
   private chatPeers: Map<string, ChatPeerPayload> = new Map();
 
   // 事件回调
-  private onPlayerJoinedCallback?: (playerId: string, playerName: string, virtualIp?: string, virtualDomain?: string, useDomain?: boolean) => void;
+  private onPlayerJoinedCallback?: (
+    playerId: string,
+    playerName: string,
+    virtualIp?: string,
+    virtualDomain?: string,
+    useDomain?: boolean
+  ) => void;
   private onPlayerLeftCallback?: (playerId: string) => void;
   private onStatusUpdateCallback?: (playerId: string, micEnabled: boolean) => void;
   private onRemoteStreamCallback?: (playerId: string, stream: MediaStream) => void;
   private onLocalStreamCallback?: (stream: MediaStream | null) => void;
-  private onChatMessageCallback?: (playerId: string, playerName: string, content: string, timestamp: number) => void;
-  private onVersionErrorCallback?: (currentVersion: string, minimumVersion: string, downloadUrl: string) => void;
+  private onChatMessageCallback?: (
+    playerId: string,
+    playerName: string,
+    content: string,
+    timestamp: number
+  ) => void;
+  private onVersionErrorCallback?: (
+    currentVersion: string,
+    minimumVersion: string,
+    downloadUrl: string
+  ) => void;
   // 房主/大厅管理相关回调
   private onLobbyMetaCallback?: (meta: LobbyMeta) => void;
   private onHostChangedCallback?: (hostId: string) => void;
@@ -162,32 +185,50 @@ export class WebRTCClient {
   private onLobbyOptionsChangedCallback?: (maxPlayers: number | null, isPublic: boolean) => void;
   private onKickedCallback?: (reason: string) => void;
   // WebSocket 可能在 initialize() 返回前就推送首批玩家列表；先缓存，待 UI 注册回调后补发。
-  private pendingPlayerJoined: Map<string, {
-    playerName: string;
-    virtualIp?: string;
-    virtualDomain?: string;
-    useDomain?: boolean;
-  }> = new Map();
+  private pendingPlayerJoined: Map<
+    string,
+    {
+      playerName: string;
+      virtualIp?: string;
+      virtualDomain?: string;
+      useDomain?: boolean;
+    }
+  > = new Map();
   private pendingLobbyMeta: LobbyMeta | null = null;
 
   /**
    * 初始化 WebRTC 客户端
    */
-  async initialize(playerId: string, playerName: string, lobbyName: string, lobbyPassword: string, virtualDomain?: string, useDomain?: boolean, signalingServer?: string): Promise<void> {
+  async initialize(
+    playerId: string,
+    playerName: string,
+    lobbyName: string,
+    lobbyPassword: string,
+    virtualDomain?: string,
+    useDomain?: boolean,
+    signalingServer?: string
+  ): Promise<void> {
     try {
       const safePlayerId = isSafeIdentifier(playerId) ? playerId : '';
       const safePlayerName = sanitizeUntrustedText(playerName, MAX_PLAYER_NAME_LENGTH).trim();
       const safeLobbyName = sanitizeUntrustedText(lobbyName, 128).trim();
       const safeLobbyPassword = sanitizeUntrustedText(lobbyPassword, 256);
-      const safeVirtualDomain = isSafeVirtualDomain(virtualDomain) ? virtualDomain.trim() : undefined;
+      const safeVirtualDomain = isSafeVirtualDomain(virtualDomain)
+        ? virtualDomain.trim()
+        : undefined;
       const safeSignalingServer = signalingServer?.trim() || 'wss://mctier.pmhs.top/signaling';
-      if (!safePlayerId || !safePlayerName || !safeLobbyName || !isSafeSignalingServer(safeSignalingServer)) {
+      if (
+        !safePlayerId ||
+        !safePlayerName ||
+        !safeLobbyName ||
+        !isSafeSignalingServer(safeSignalingServer)
+      ) {
         throw new Error('WebRTC 初始化参数无效');
       }
 
       console.log('🚀 开始初始化 WebRTC 客户端...');
       console.log('已读取 WebRTC 身份参数');
-      
+
       // 重置麦克风的期望/实际状态，避免上一次大厅的残留状态导致本次关麦被误判为"无需操作"
       this.desiredMicEnabled = false;
       this.micActuallyEnabled = false;
@@ -209,34 +250,34 @@ export class WebRTCClient {
       } catch (error) {
         console.warn('⚠️ 重置 Store 语音状态失败:', error);
       }
-      
+
       // 如果已经初始化过，先清理
       if (this.websocket || this.localStream || this.peerConnections.size > 0) {
         console.warn('⚠️ 检测到已存在的WebRTC实例，先进行清理...');
         await this.cleanup();
         // 等待一小段时间，确保清理完成
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-      
+
       this.localPlayerId = safePlayerId;
       this.localPlayerName = safePlayerName;
       this.lobbyName = safeLobbyName;
       this.lobbyPassword = safeLobbyPassword;
       this.virtualDomain = safeVirtualDomain || null;
       this.useDomain = useDomain === true && !!safeVirtualDomain;
-      
+
       // 重置断开标志和重连相关状态
       this.isIntentionalDisconnect = false;
       this.reconnectAttempts = 0;
       this.websocketReconnectInFlight = false;
       this.reconnectingPeers.clear();
-      this.reconnectTimers.forEach(timer => clearTimeout(timer));
+      this.reconnectTimers.forEach((timer) => clearTimeout(timer));
       this.reconnectTimers.clear();
       this.authoritativePlayers.clear();
       this.authoritativeSnapshotVersion = 0;
       this.websocketMessageQueue = Promise.resolve();
       this.startVoiceHealthMonitor();
-      
+
       // 【优化】只在首次初始化时清空已知玩家列表
       // 信令服务器重连时不应该清空，避免重复建立连接
       this.knownPlayers.clear();
@@ -322,7 +363,9 @@ export class WebRTCClient {
       // room on macOS after a brief signaling interruption.
       throw error instanceof Error
         ? error
-        : new Error(tl(`无法初始化语音系统: ${error}`, `Failed to initialize the voice system: ${error}`));
+        : new Error(
+            tl(`无法初始化语音系统: ${error}`, `Failed to initialize the voice system: ${error}`)
+          );
     }
   }
 
@@ -350,7 +393,9 @@ export class WebRTCClient {
             this.websocket.close();
             this.websocket = null;
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         // 密码/版本等注册拒绝不是瞬时网络故障，重复连接只会让客户端
         // 看起来进入了一个空大厅，并给服务器制造无意义的重试。
         if (e instanceof SignalingRegistrationError) throw e;
@@ -369,7 +414,7 @@ export class WebRTCClient {
     return new Promise((resolve, reject) => {
       try {
         console.log('正在连接到信令服务器');
-        
+
         const socket = new WebSocket(this.signalingServerUrl);
         let hasOpened = false;
         let registrationAccepted = false;
@@ -400,7 +445,7 @@ export class WebRTCClient {
           clearRegistrationTimeout();
           reject(error);
         };
-        
+
         this.websocket.onopen = () => {
           if (this.websocket !== socket) return;
           hasOpened = true;
@@ -408,30 +453,40 @@ export class WebRTCClient {
 
           // 注册到服务器
           if (this.websocket) {
-            this.websocket.send(JSON.stringify({
-              type: 'register',
-              clientId: this.localPlayerId,
-              playerName: this.localPlayerName,
-              virtualIp: this.virtualIp,
-              virtualDomain: this.virtualDomain,
-              useDomain: this.useDomain,
-              lobbyName: this.lobbyName,
-              lobbyPassword: this.lobbyPassword,
-              clientVersion: appVersion(),
-            }));
+            this.websocket.send(
+              JSON.stringify({
+                type: 'register',
+                clientId: this.localPlayerId,
+                playerName: this.localPlayerName,
+                virtualIp: this.virtualIp,
+                virtualDomain: this.virtualDomain,
+                useDomain: this.useDomain,
+                lobbyName: this.lobbyName,
+                lobbyPassword: this.lobbyPassword,
+                clientVersion: appVersion(),
+              })
+            );
             console.log('📤 已发送注册消息');
           }
 
           // WebSocket 打开不等于加入大厅成功。必须等待服务端确认密码和
           // 房间身份，否则 register-error 会被吞掉，界面仍会显示“已加入”。
           registrationTimeout = window.setTimeout(() => {
-            rejectRegistration(new Error(tl(
-              '信令服务器未确认加入大厅，请检查网络后重试',
-              'The signaling server did not confirm the lobby registration; check the network and retry'
-            )));
-            try { socket.close(); } catch { /* ignore */ }
+            rejectRegistration(
+              new Error(
+                tl(
+                  '信令服务器未确认加入大厅，请检查网络后重试',
+                  'The signaling server did not confirm the lobby registration; check the network and retry'
+                )
+              )
+            );
+            try {
+              socket.close();
+            } catch {
+              /* ignore */
+            }
           }, 10000);
-          
+
           // 启动 WebSocket 心跳保活
           this.startWebSocketHeartbeat();
           if (this.websocketStableTimer !== null) clearTimeout(this.websocketStableTimer);
@@ -440,7 +495,7 @@ export class WebRTCClient {
             this.websocketStableTimer = null;
           }, 6000);
         };
-        
+
         this.websocket.onmessage = (event) => {
           if (this.websocket !== socket) return;
           try {
@@ -453,30 +508,41 @@ export class WebRTCClient {
             if (message.type === 'register-success') {
               acceptRegistration();
             } else if (message.type === 'register-error') {
-              const detail = typeof message.message === 'string' && message.message.trim()
-                ? message.message.trim()
-                : tl('大厅名称或密码不匹配', 'The lobby name or password does not match');
-              rejectRegistration(new SignalingRegistrationError(
-                tl(`无法加入信令大厅：${detail}`, `Unable to join the signaling lobby: ${detail}`)
-              ));
-              try { socket.close(); } catch { /* ignore */ }
+              const detail =
+                typeof message.message === 'string' && message.message.trim()
+                  ? message.message.trim()
+                  : tl('大厅名称或密码不匹配', 'The lobby name or password does not match');
+              rejectRegistration(
+                new SignalingRegistrationError(
+                  tl(`无法加入信令大厅：${detail}`, `Unable to join the signaling lobby: ${detail}`)
+                )
+              );
+              try {
+                socket.close();
+              } catch {
+                /* ignore */
+              }
             } else if (message.type === 'version-too-old') {
-              rejectRegistration(new SignalingRegistrationError(tl(
-                '客户端版本过低，无法加入大厅',
-                'The client version is too old to join the lobby'
-              )));
+              rejectRegistration(
+                new SignalingRegistrationError(
+                  tl(
+                    '客户端版本过低，无法加入大厅',
+                    'The client version is too old to join the lobby'
+                  )
+                )
+              );
             }
           } catch (error) {
             console.error('❌ 解析WebSocket消息失败:', error);
           }
         };
-        
+
         this.websocket.onerror = (error) => {
           if (this.websocket !== socket) return;
           console.error('❌ WebSocket连接错误:', error);
           if (!hasOpened) rejectRegistration(new Error('无法连接到信令服务器'));
         };
-        
+
         this.websocket.onclose = () => {
           if (this.websocket !== socket) return;
           this.websocket = null;
@@ -486,14 +552,14 @@ export class WebRTCClient {
             this.websocketStableTimer = null;
           }
           console.log('⚠️ 与信令服务器的连接已断开');
-          
+
           // 停止 WebSocket 心跳
           this.stopWebSocketHeartbeat();
 
           if (!promiseSettled) {
-            rejectRegistration(new Error(
-              hasOpened ? '信令服务器在确认大厅注册前断开' : '信令服务器在连接建立前断开'
-            ));
+            rejectRegistration(
+              new Error(hasOpened ? '信令服务器在确认大厅注册前断开' : '信令服务器在连接建立前断开')
+            );
             return;
           }
 
@@ -516,7 +582,6 @@ export class WebRTCClient {
             }, delay);
           }
         };
-        
       } catch (error) {
         reject(error);
       }
@@ -546,7 +611,7 @@ export class WebRTCClient {
     this.websocketReconnectInFlight = true;
     try {
       console.log('🔄 正在重连WebSocket...');
-      
+
       // 清理旧的WebSocket连接
       if (this.websocket) {
         this.resetRemoteControlOnSignalingDisconnect();
@@ -554,13 +619,16 @@ export class WebRTCClient {
         this.websocket.onmessage = null;
         this.websocket.onerror = null;
         this.websocket.onclose = null;
-        
-        if (this.websocket.readyState === WebSocket.OPEN || this.websocket.readyState === WebSocket.CONNECTING) {
+
+        if (
+          this.websocket.readyState === WebSocket.OPEN ||
+          this.websocket.readyState === WebSocket.CONNECTING
+        ) {
           this.websocket.close();
         }
         this.websocket = null;
       }
-      
+
       // 重新连接
       await this.connectToSignalingServer();
 
@@ -584,18 +652,17 @@ export class WebRTCClient {
       } catch (error) {
         console.error('❌ 刷新远程控制服务WebSocket失败:', error);
       }
-      
+
       console.log('✅ WebSocket重连成功');
-      
     } catch (error) {
       console.error('❌ WebSocket重连失败:', error);
-      
+
       // 如果还没达到最大重连次数，继续尝试
       if (!this.isIntentionalDisconnect) {
         this.reconnectAttempts++;
         const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
         console.log(`🔄 将在 ${delay}ms 后尝试第 ${this.reconnectAttempts} 次重连...`);
-        
+
         if (this.reconnectTimeout !== null) clearTimeout(this.reconnectTimeout);
         this.reconnectTimeout = window.setTimeout(() => {
           this.reconnectTimeout = null;
@@ -646,7 +713,10 @@ export class WebRTCClient {
       const resyncTimer = window.setTimeout(() => {
         this.playerLeaveResyncTimers.delete(playerId);
         if (!this.knownPlayers.has(playerId)) return;
-        if (this.authoritativeSnapshotVersion > snapshotBefore && this.authoritativePlayers.has(playerId)) {
+        if (
+          this.authoritativeSnapshotVersion > snapshotBefore &&
+          this.authoritativePlayers.has(playerId)
+        ) {
           this.clearPendingPlayerLeave(playerId);
           return;
         }
@@ -746,7 +816,10 @@ export class WebRTCClient {
 
   private safeRouteVersion(value: unknown): number | undefined {
     if (value === undefined || value === null) return undefined;
-    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 1_000_000_000
+    return typeof value === 'number' &&
+      Number.isSafeInteger(value) &&
+      value > 0 &&
+      value <= 1_000_000_000
       ? value
       : undefined;
   }
@@ -772,23 +845,37 @@ export class WebRTCClient {
     return isSafeSessionId(sessionId) ? { peerId, sessionId } : null;
   }
 
-  private isSafeSessionDescription(value: unknown, expectedType: 'offer' | 'answer'): value is RTCSessionDescriptionInit {
+  private isSafeSessionDescription(
+    value: unknown,
+    expectedType: 'offer' | 'answer'
+  ): value is RTCSessionDescriptionInit {
     if (!value || typeof value !== 'object') return false;
     const input = value as Record<string, unknown>;
-    return input.type === expectedType && typeof input.sdp === 'string' && input.sdp.length > 0 && input.sdp.length <= 256 * 1024;
+    return (
+      input.type === expectedType &&
+      typeof input.sdp === 'string' &&
+      input.sdp.length > 0 &&
+      input.sdp.length <= 256 * 1024
+    );
   }
 
   private isSafeIceCandidate(value: unknown): boolean {
     if (!value || typeof value !== 'object') return false;
     const input = value as Record<string, unknown>;
-    if (typeof input.candidate !== 'string' || input.candidate.length === 0 || input.candidate.length > 16 * 1024) return false;
+    if (
+      typeof input.candidate !== 'string' ||
+      input.candidate.length === 0 ||
+      input.candidate.length > 16 * 1024
+    )
+      return false;
     if (
       input.sdpMLineIndex != null &&
       (typeof input.sdpMLineIndex !== 'number' ||
         !Number.isSafeInteger(input.sdpMLineIndex) ||
         input.sdpMLineIndex < 0 ||
         input.sdpMLineIndex > 256)
-    ) return false;
+    )
+      return false;
     return input.sdpMid == null || (typeof input.sdpMid === 'string' && input.sdpMid.length <= 128);
   }
 
@@ -812,7 +899,7 @@ export class WebRTCClient {
 
   private chatPeerSnapshot(): ChatPeerPayload[] {
     return Array.from(this.chatPeers.values()).sort((left, right) =>
-      left.player_id.localeCompare(right.player_id),
+      left.player_id.localeCompare(right.player_id)
     );
   }
 
@@ -822,7 +909,7 @@ export class WebRTCClient {
     p2pChatService.initialize(
       peers.map((peer) => peer.virtual_ip),
       this.localPlayerId,
-      this.virtualIp,
+      this.virtualIp
     );
     p2pChatService.setChatToken(this.chatToken || undefined);
   }
@@ -858,7 +945,10 @@ export class WebRTCClient {
     this.refreshP2PChatFrontend();
   }
 
-  private acceptChatToken(token: unknown, epoch: unknown): 'accepted' | 'unchanged' | 'stale' | 'rejected' {
+  private acceptChatToken(
+    token: unknown,
+    epoch: unknown
+  ): 'accepted' | 'unchanged' | 'stale' | 'rejected' {
     if (!isSafeChatToken(token)) return 'rejected';
     const numericEpoch =
       typeof epoch === 'number' && Number.isSafeInteger(epoch) && epoch > 0 ? epoch : 0;
@@ -911,14 +1001,14 @@ export class WebRTCClient {
         case 'pong':
           // 收到 pong 响应（上方已重置超时，这里仅用于明确分支）
           break;
-          
+
         case 'register-success': {
           // 注册成功
           const registeredHostId = isSafeIdentifier(message.hostId) ? message.hostId : undefined;
           this.chatHostId = registeredHostId;
           const initialTokenStatus = this.acceptChatToken(
             message.chatToken,
-            message.chatTokenEpoch,
+            message.chatTokenEpoch
           );
           if (initialTokenStatus === 'rejected' || initialTokenStatus === 'stale') {
             await this.failClosedChatSession('注册响应中的聊天认证状态无效');
@@ -935,12 +1025,18 @@ export class WebRTCClient {
           console.log('✅ 注册成功');
           // 携带房主/人数上限/公开状态/禁言列表等大厅元数据
           const mutedPlayers: string[] | undefined = Array.isArray(message.mutedPlayers)
-            ? Array.from(new Set<string>((message.mutedPlayers as unknown[])
-              .filter((id: unknown): id is string => isSafeIdentifier(id))))
+            ? Array.from(
+                new Set<string>(
+                  (message.mutedPlayers as unknown[]).filter((id: unknown): id is string =>
+                    isSafeIdentifier(id)
+                  )
+                )
+              )
             : undefined;
-          const maxPlayers = typeof message.maxPlayers === 'number' && Number.isSafeInteger(message.maxPlayers)
-            ? Math.max(1, Math.min(100_000, message.maxPlayers))
-            : null;
+          const maxPlayers =
+            typeof message.maxPlayers === 'number' && Number.isSafeInteger(message.maxPlayers)
+              ? Math.max(1, Math.min(100_000, message.maxPlayers))
+              : null;
           const lobbyMeta: LobbyMeta = {
             hostId: registeredHostId,
             maxPlayers,
@@ -972,14 +1068,14 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'register-error':
           // 注册失败
           console.error('❌ 注册失败');
           // 不要抛出错误,只记录日志
           // 用户可能输入了错误的密码,应该让他们看到错误信息而不是断开连接
           break;
-          
+
         case 'version-too-old':
           // 版本过低
           console.error('❌ 客户端版本过低');
@@ -988,13 +1084,13 @@ export class WebRTCClient {
             this.onVersionErrorCallback(
               sanitizeUntrustedText(message.currentVersion, 32),
               sanitizeUntrustedText(message.minimumVersion, 32),
-              sanitizeUntrustedText(message.downloadUrl, 512),
+              sanitizeUntrustedText(message.downloadUrl, 512)
             );
           }
-          
+
           // 停止自动重连
           this.isIntentionalDisconnect = true;
-          
+
           // 关闭WebSocket连接
           if (this.websocket) {
             this.websocket.close();
@@ -1019,7 +1115,8 @@ export class WebRTCClient {
         case 'player-mute-changed':
           // 禁言状态变化
           const mutedPlayerId = message.playerId;
-          if (!this.isKnownPlayer(mutedPlayerId, false) || typeof message.muted !== 'boolean') break;
+          if (!this.isKnownPlayer(mutedPlayerId, false) || typeof message.muted !== 'boolean')
+            break;
           console.log('🔇 禁言状态变化');
           this.onMuteChangedCallback?.(mutedPlayerId, message.muted);
           break;
@@ -1027,11 +1124,12 @@ export class WebRTCClient {
         case 'lobby-options-changed':
           // 大厅选项变化
           if (typeof message.isPublic !== 'boolean') break;
-          const changedMaxPlayers = message.maxPlayers == null
-            ? null
-            : (typeof message.maxPlayers === 'number' && Number.isSafeInteger(message.maxPlayers)
-              ? Math.max(1, Math.min(100_000, message.maxPlayers))
-              : null);
+          const changedMaxPlayers =
+            message.maxPlayers == null
+              ? null
+              : typeof message.maxPlayers === 'number' && Number.isSafeInteger(message.maxPlayers)
+                ? Math.max(1, Math.min(100_000, message.maxPlayers))
+                : null;
           console.log('⚙️ 大厅选项变化');
           this.onLobbyOptionsChangedCallback?.(changedMaxPlayers, message.isPublic);
           break;
@@ -1053,7 +1151,7 @@ export class WebRTCClient {
           }
           this.onKickedCallback?.(kickReason || '你已被房主移出大厅');
           break;
-          
+
         case 'players-list':
           // 收到当前在线玩家列表
           if (!Array.isArray(message.players)) {
@@ -1103,9 +1201,13 @@ export class WebRTCClient {
             const playerId = input.playerId;
             if (!isSafeIdentifier(playerId)) continue;
             if (!playerId) continue;
-            const playerName = sanitizeUntrustedText(input.playerName, 64).trim() || tl('未知玩家', 'Unknown player');
+            const playerName =
+              sanitizeUntrustedText(input.playerName, 64).trim() ||
+              tl('未知玩家', 'Unknown player');
             const virtualIp = isSafeVirtualIp(input.virtualIp) ? input.virtualIp.trim() : undefined;
-            const virtualDomain = isSafeVirtualDomain(input.virtualDomain) ? input.virtualDomain.trim() : undefined;
+            const virtualDomain = isSafeVirtualDomain(input.virtualDomain)
+              ? input.virtualDomain.trim()
+              : undefined;
             const player = {
               playerId,
               playerName,
@@ -1134,7 +1236,7 @@ export class WebRTCClient {
 
             const isKnownPlayer = this.knownPlayers.has(player.playerId);
             this.knownPlayers.add(player.playerId);
-            
+
             // 如果启用了域名访问且有虚拟域名，添加到hosts文件
             if (player.useDomain && player.virtualDomain && player.virtualIp) {
               // 记录域名，供该玩家离开时清理 hosts（player-left 只带 playerId）
@@ -1151,12 +1253,18 @@ export class WebRTCClient {
                 // 不中断流程，继续处理玩家列表
               }
             }
-            
+
             // 触发回调，添加玩家到前端列表（避免重连时重复触发）
             if (!isKnownPlayer) {
-              this.notifyPlayerJoined(player.playerId, player.playerName, player.virtualIp, player.virtualDomain, player.useDomain);
+              this.notifyPlayerJoined(
+                player.playerId,
+                player.playerName,
+                player.virtualIp,
+                player.virtualDomain,
+                player.useDomain
+              );
             }
-            
+
             // 已知玩家仍在权威列表中时，只修复他的连接，不能触发“玩家离开”回调。
             // EasyTier 路由重算期间 connectionState 可能短暂变为 disconnected/failed，
             // 旧逻辑会把仍在线玩家从 UI 移除并重建连接，放大为多人语音短暂无声。
@@ -1165,16 +1273,22 @@ export class WebRTCClient {
               if (existingPeer) {
                 const state = existingPeer.connection.connectionState;
                 if (this.isPeerConnectedOrFresh(existingPeer)) {
-                  console.log(`✅ 玩家 ${player.playerId} 的WebRTC连接已存在且状态正常 (${state})，跳过重复连接`);
+                  console.log(
+                    `✅ 玩家 ${player.playerId} 的WebRTC连接已存在且状态正常 (${state})，跳过重复连接`
+                  );
                   continue;
                 } else {
-                  console.log(`⚠️ 玩家 ${player.playerId} 的WebRTC连接状态异常 (${state})，将重新建立连接`);
+                  console.log(
+                    `⚠️ 玩家 ${player.playerId} 的WebRTC连接状态异常 (${state})，将重新建立连接`
+                  );
                   this.clearPeerReconnectState(player.playerId);
                   this.removePeerConnection(player.playerId);
                   this.schedulePeerReconnect(player.playerId, 'players-list发现异常连接', 500);
                 }
               } else {
-                console.log(`⚠️ 玩家 ${player.playerId} 在已知列表中但WebRTC连接不存在，将重新建立连接`);
+                console.log(
+                  `⚠️ 玩家 ${player.playerId} 在已知列表中但WebRTC连接不存在，将重新建立连接`
+                );
                 this.schedulePeerReconnect(player.playerId, 'players-list发现缺失连接', 500);
               }
 
@@ -1182,29 +1296,33 @@ export class WebRTCClient {
               // 再按字典序等待，否则较小 ID 一方可能永久等不到新的 Offer。
               continue;
             }
-            
+
             // 使用字符串比较决定谁主动发起连接，避免双方同时发送Offer
             // 只有当本地玩家ID字典序大于对方时才主动发起连接
             if (this.localPlayerId > player.playerId) {
               console.log(`📡 主动向 ${player.playerId} 发起连接（ID字典序较大）`);
-              
+
               // 创建连接
               await this.createPeerConnection(player.playerId);
-              
+
               // 等待ICE候选收集开始
-              await new Promise(resolve => setTimeout(resolve, 100));
-              
+              await new Promise((resolve) => setTimeout(resolve, 100));
+
               // 创建 Offer
               const pc = this.peerConnections.get(player.playerId);
               if (pc) {
                 const offer = await pc.connection.createOffer();
                 await pc.connection.setLocalDescription(offer);
-                
+
                 // 发送 Offer（失败自动重试一次）
-                await this.sendOfferWithRetry(player.playerId, {
-                  type: offer.type,
-                  sdp: offer.sdp,
-                }, '初次连接');
+                await this.sendOfferWithRetry(
+                  player.playerId,
+                  {
+                    type: offer.type,
+                    sdp: offer.sdp,
+                  },
+                  '初次连接'
+                );
               }
             } else {
               console.log(`⏳ 等待 ${player.playerId} 主动发起连接（ID字典序较小）`);
@@ -1218,7 +1336,10 @@ export class WebRTCClient {
           this.authoritativeSnapshotVersion += 1;
           for (const oldId of knownBefore) {
             if (oldId === this.localPlayerId || listedIds.has(oldId)) continue;
-            if (this.pendingPlayerLeaveTimers.has(oldId) || this.playerLeaveResyncTimers.has(oldId)) {
+            if (
+              this.pendingPlayerLeaveTimers.has(oldId) ||
+              this.playerLeaveResyncTimers.has(oldId)
+            ) {
               console.log(`🧹 [离线确认] ${oldId} 仍不在最新权威列表，确认已离开`);
               await this.removeConfirmedPlayer(oldId);
               continue;
@@ -1226,31 +1347,38 @@ export class WebRTCClient {
             console.log(`⏳ [成员校验] ${oldId} 未出现在权威列表，启动二次确认`);
             this.schedulePlayerLeaveConfirmation(oldId);
           }
-          
+
           // 【修复】自己加入大厅后，向所有人请求屏幕共享列表和文件共享列表
           console.log('📢 [WebRTCClient] 自己加入大厅，向所有人请求屏幕共享列表和文件共享列表...');
           this.sendWebSocketMessage({
             type: 'screen-share-list-request',
             from: this.localPlayerId,
           });
-          
+
           // 【事件驱动】请求文件共享列表
           this.sendWebSocketMessage({
             type: 'file-share-list-request',
             from: this.localPlayerId,
           });
-          
+
           // HTTP模式：不需要广播共享列表，客户端直接通过HTTP API查询
           break;
-          
+
         case 'player-joined':
           // 有新玩家加入
-           const joinedPlayerId = message.playerId;
-          const joinedPlayerName = sanitizeUntrustedText(message.playerName, 64).trim() || tl('未知玩家', 'Unknown player');
-          const joinedVirtualIp = isSafeVirtualIp(message.virtualIp) ? message.virtualIp.trim() : undefined;
-          const joinedVirtualDomain = isSafeVirtualDomain(message.virtualDomain) ? message.virtualDomain.trim() : undefined;
-          const joinedUseDomain = message.useDomain === true && !!joinedVirtualIp && !!joinedVirtualDomain;
-           if (!isSafeIdentifier(joinedPlayerId)) break;
+          const joinedPlayerId = message.playerId;
+          const joinedPlayerName =
+            sanitizeUntrustedText(message.playerName, 64).trim() ||
+            tl('未知玩家', 'Unknown player');
+          const joinedVirtualIp = isSafeVirtualIp(message.virtualIp)
+            ? message.virtualIp.trim()
+            : undefined;
+          const joinedVirtualDomain = isSafeVirtualDomain(message.virtualDomain)
+            ? message.virtualDomain.trim()
+            : undefined;
+          const joinedUseDomain =
+            message.useDomain === true && !!joinedVirtualIp && !!joinedVirtualDomain;
+          if (!isSafeIdentifier(joinedPlayerId)) break;
           console.log(`🎮 新玩家加入: ${joinedPlayerName} (${joinedPlayerId})`);
 
           if (joinedPlayerId === this.localPlayerId) {
@@ -1279,13 +1407,15 @@ export class WebRTCClient {
               console.log(`♻️ ${joinedPlayerId} 重新注册且语音连接异常，调度自动修复`);
               this.schedulePeerReconnect(joinedPlayerId, '玩家重新注册', 500);
             } else {
-              console.log(`⏳ ${joinedPlayerId} 已在players-list中处理过，连接正常，跳过重复加入事件`);
+              console.log(
+                `⏳ ${joinedPlayerId} 已在players-list中处理过，连接正常，跳过重复加入事件`
+              );
             }
             break;
           }
 
           this.knownPlayers.add(joinedPlayerId);
-          
+
           // 播放玩家加入音效（短时断线恢复不播放）
           if (!isRecoveredPlayer) {
             try {
@@ -1295,7 +1425,7 @@ export class WebRTCClient {
               console.error('播放玩家加入音效失败:', error);
             }
           }
-          
+
           // 如果启用了域名访问且有虚拟域名，添加到hosts文件
           if (joinedUseDomain && joinedVirtualDomain && joinedVirtualIp) {
             // 记录域名，供该玩家离开时清理 hosts（player-left 只带 playerId）
@@ -1312,44 +1442,54 @@ export class WebRTCClient {
               // 不中断流程，继续处理玩家加入
             }
           }
-          
+
           // 触发回调
-          this.notifyPlayerJoined(joinedPlayerId, joinedPlayerName, joinedVirtualIp, joinedVirtualDomain, joinedUseDomain);
-          
+          this.notifyPlayerJoined(
+            joinedPlayerId,
+            joinedPlayerName,
+            joinedVirtualIp,
+            joinedVirtualDomain,
+            joinedUseDomain
+          );
+
           // HTTP模式：不需要向新玩家发送共享列表，客户端直接通过HTTP API查询
           // 只有当本地玩家ID字典序大于对方时才主动发起连接
           if (this.localPlayerId > joinedPlayerId) {
             console.log(`📡 主动向新玩家 ${joinedPlayerId} 发起连接（ID字典序较大）`);
-            
+
             // 等待一小段时间，让新玩家完成初始化
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
             // 创建连接
             await this.createPeerConnection(joinedPlayerId);
-            
+
             // 等待ICE候选收集开始
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             // 创建 Offer
             const pc = this.peerConnections.get(joinedPlayerId);
             if (pc) {
               const offer = await pc.connection.createOffer();
               await pc.connection.setLocalDescription(offer);
-              
+
               // 发送 Offer（失败自动重试一次）
-              await this.sendOfferWithRetry(joinedPlayerId, {
-                type: offer.type,
-                sdp: offer.sdp,
-              }, '新玩家连接');
+              await this.sendOfferWithRetry(
+                joinedPlayerId,
+                {
+                  type: offer.type,
+                  sdp: offer.sdp,
+                },
+                '新玩家连接'
+              );
             }
           } else {
             console.log(`⏳ 等待新玩家 ${joinedPlayerId} 主动发起连接（ID字典序较小）`);
           }
           break;
-          
+
         case 'player-left':
           // 有玩家离开（增加短时断线缓冲，避免误报提示音）
-           const leftPlayerId = message.playerId;
+          const leftPlayerId = message.playerId;
           if (leftPlayerId) {
             this.chatPeers.delete(leftPlayerId);
             if (this.chatHostId === leftPlayerId) this.chatHostId = undefined;
@@ -1360,7 +1500,7 @@ export class WebRTCClient {
               break;
             }
           }
-           if (!isSafeIdentifier(leftPlayerId) || !this.knownPlayers.has(leftPlayerId)) {
+          if (!isSafeIdentifier(leftPlayerId) || !this.knownPlayers.has(leftPlayerId)) {
             break;
           }
           console.log('👋 玩家离开事件');
@@ -1375,19 +1515,19 @@ export class WebRTCClient {
             break;
           }
           break;
-          
+
         case 'offer':
           // 收到 offer
           console.log(`📥 收到 Offer from ${message.from}`);
           await this.handleWebSocketOffer(message);
           break;
-          
+
         case 'answer':
           // 收到 answer
           console.log(`📥 收到 Answer from ${message.from}`);
           await this.handleWebSocketAnswer(message);
           break;
-          
+
         case 'ice-candidate':
           // 收到 ICE 候选
           console.log(`🧊 收到 ICE Candidate from ${message.from}`);
@@ -1400,17 +1540,21 @@ export class WebRTCClient {
           // 必须双端同时拆掉旧连接，否则一端沿用旧 PeerConnection 会因指纹/ufrag
           // 不匹配而出现"连上了但没声音"。
           const reconnectPlayerId = message.from;
-          if (this.isKnownPlayer(reconnectPlayerId, false) && (!message.to || message.to === this.localPlayerId)) {
+          if (
+            this.isKnownPlayer(reconnectPlayerId, false) &&
+            (!message.to || message.to === this.localPlayerId)
+          ) {
             console.log('🔄 收到语音重连请求，拆除旧连接等待重建');
             this.clearPeerReconnectState(reconnectPlayerId);
             this.removePeerConnection(reconnectPlayerId);
           }
           break;
-          
+
         case 'status-update':
           // 收到状态更新
           const statusPlayerId = message.clientId;
-          if (!this.isKnownPlayer(statusPlayerId, false) || typeof message.micEnabled !== 'boolean') break;
+          if (!this.isKnownPlayer(statusPlayerId, false) || typeof message.micEnabled !== 'boolean')
+            break;
           console.log('📢 收到状态更新');
           this.onStatusUpdateCallback?.(statusPlayerId, message.micEnabled);
           break;
@@ -1420,13 +1564,21 @@ export class WebRTCClient {
           const chatPlayerId = message.playerId;
           const chatPlayerName = sanitizeUntrustedText(message.playerName, 64).trim();
           const chatContent = sanitizeUntrustedText(message.content, MAX_CHAT_TEXT_LENGTH);
-          const chatTimestamp = typeof message.timestamp === 'number' ? message.timestamp : Number.NaN;
+          const chatTimestamp =
+            typeof message.timestamp === 'number' ? message.timestamp : Number.NaN;
           console.log('💬 收到聊天消息');
-          if (this.onChatMessageCallback && this.isKnownPlayer(chatPlayerId, false) && chatPlayerName && chatContent && Number.isFinite(chatTimestamp) && chatTimestamp >= 0) {
+          if (
+            this.onChatMessageCallback &&
+            this.isKnownPlayer(chatPlayerId, false) &&
+            chatPlayerName &&
+            chatContent &&
+            Number.isFinite(chatTimestamp) &&
+            chatTimestamp >= 0
+          ) {
             this.onChatMessageCallback(chatPlayerId, chatPlayerName, chatContent, chatTimestamp);
           }
           break;
-          
+
         case 'file-share-list':
           // 收到文件共享列表更新
           console.log(`📁 收到文件共享列表更新`);
@@ -1439,60 +1591,80 @@ export class WebRTCClient {
             console.error('❌ 更新文件共享列表失败:', error);
           }
           break;
-          
+
         case 'file-list-request':
           // 收到文件列表请求 (已废弃，使用HTTP API)
-          console.log(`📂 收到文件列表请求 from ${message.from}, shareId: ${message.shareId} (已废弃)`);
+          console.log(
+            `📂 收到文件列表请求 from ${message.from}, shareId: ${message.shareId} (已废弃)`
+          );
           break;
-          
+
         case 'file-list-response':
           // 收到文件列表响应 (已废弃，使用HTTP API)
-          console.log(`📂 收到文件列表响应 from ${message.from}, shareId: ${message.shareId} (已废弃)`);
+          console.log(
+            `📂 收到文件列表响应 from ${message.from}, shareId: ${message.shareId} (已废弃)`
+          );
           break;
-          
+
         case 'file-transfer-request':
           // 收到文件传输请求 (已废弃，使用HTTP API)
           console.log(`📥 收到文件传输请求 from ${message.from} (已废弃)`);
           break;
-          
+
         case 'file-transfer-response':
           // Legacy WebSocket file-transfer signaling is disabled. Ignore it
           // rather than allowing an arbitrary peer to mutate local transfer UI.
           break;
-          
+
         case 'file-chunk':
           // 已禁用：不再通过WebSocket传输文件数据块
-          console.error('❌ 收到WebSocket文件数据块消息，但此功能已被禁用！所有文件传输必须通过P2P DataChannel进行！');
+          console.error(
+            '❌ 收到WebSocket文件数据块消息，但此功能已被禁用！所有文件传输必须通过P2P DataChannel进行！'
+          );
           break;
-          
+
         case 'file-transfer-complete':
           // 已禁用：不再通过WebSocket发送传输完成消息
-          console.error('❌ 收到WebSocket传输完成消息，但此功能已被禁用！所有文件传输必须通过P2P DataChannel进行！');
+          console.error(
+            '❌ 收到WebSocket传输完成消息，但此功能已被禁用！所有文件传输必须通过P2P DataChannel进行！'
+          );
           break;
-          
+
         case 'file-transfer-error':
           // 已禁用：不再通过WebSocket发送传输错误消息
-          console.error('❌ 收到WebSocket传输错误消息，但此功能已被禁用！所有文件传输必须通过P2P DataChannel进行！');
+          console.error(
+            '❌ 收到WebSocket传输错误消息，但此功能已被禁用！所有文件传输必须通过P2P DataChannel进行！'
+          );
           break;
-          
+
         case 'share-added':
           // Legacy file-share signaling is disabled; the HTTP listing is the
           // sole source of truth for remote shares.
           break;
-          
+
         case 'share-removed':
           break;
-          
+
         case 'share-updated':
           break;
-          
+
         case 'screen-share-start':
           // 收到屏幕共享开始通知
           {
             const peerId = this.authenticatedPeerId(message, false);
             const shareId = this.safeScreenShareId(message.shareId);
-            const playerName = sanitizeUntrustedText(message.playerName, MAX_PLAYER_NAME_LENGTH).trim();
-            if (!peerId || !shareId || !shareId.startsWith('share-') || !playerName || typeof message.hasPassword !== 'boolean') break;
+            const playerName = sanitizeUntrustedText(
+              message.playerName,
+              MAX_PLAYER_NAME_LENGTH
+            ).trim();
+            if (
+              !peerId ||
+              !shareId ||
+              !shareId.startsWith('share-') ||
+              !playerName ||
+              typeof message.hasPassword !== 'boolean'
+            )
+              break;
             console.log('🖥️ 收到屏幕共享开始通知');
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
@@ -1511,20 +1683,22 @@ export class WebRTCClient {
                 status: 'active' as const,
               };
               activeShares.set(share.id, share);
-              window.dispatchEvent(new CustomEvent('screen-share-start', {
-                detail: {
-                  shareId: share.id,
-                  playerId: share.playerId,
-                  playerName: share.playerName,
-                  hasPassword: share.requirePassword,
-                },
-              }));
+              window.dispatchEvent(
+                new CustomEvent('screen-share-start', {
+                  detail: {
+                    shareId: share.id,
+                    playerId: share.playerId,
+                    playerName: share.playerName,
+                    hasPassword: share.requirePassword,
+                  },
+                })
+              );
             } catch (error) {
               console.error('❌ 处理屏幕共享开始失败:', error);
             }
           }
           break;
-          
+
         case 'screen-share-error':
           // 收到屏幕共享错误（例如密码错误）
           {
@@ -1535,18 +1709,22 @@ export class WebRTCClient {
             console.log(`❌ 收到屏幕共享错误: ${errorText}`);
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
-              const share = screenShareService.getActiveShares().find((item) => item.id === shareId);
+              const share = screenShareService
+                .getActiveShares()
+                .find((item) => item.id === shareId);
               if (!share || share.playerId !== peerId) break;
               // 这里可以通过事件通知前端显示错误
-              window.dispatchEvent(new CustomEvent('screen-share-error', {
-                detail: { shareId, error: errorText },
-              }));
+              window.dispatchEvent(
+                new CustomEvent('screen-share-error', {
+                  detail: { shareId, error: errorText },
+                })
+              );
             } catch (error) {
               console.error('❌ 处理屏幕共享错误失败:', error);
             }
           }
           break;
-          
+
         case 'screen-share-stop':
           // 收到屏幕共享停止通知
           {
@@ -1563,20 +1741,31 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'screen-share-offer':
           // 收到屏幕共享Offer
           {
             const session = this.authenticatedSession(message);
             const shareId = this.safeScreenShareId(message.shareId);
-            const playerName = sanitizeUntrustedText(message.playerName, MAX_PLAYER_NAME_LENGTH).trim();
-            const password = message.password === undefined
-              ? undefined
-              : typeof message.password === 'string'
-                ? sanitizeUntrustedText(message.password, 256)
-                : null;
+            const playerName = sanitizeUntrustedText(
+              message.playerName,
+              MAX_PLAYER_NAME_LENGTH
+            ).trim();
+            const password =
+              message.password === undefined
+                ? undefined
+                : typeof message.password === 'string'
+                  ? sanitizeUntrustedText(message.password, 256)
+                  : null;
             const routeVersion = this.safeRouteVersion(message.routeVersion);
-            if (!session || !shareId || !playerName || password === null || !this.isSafeSessionDescription(message.offer, 'offer')) break;
+            if (
+              !session ||
+              !shareId ||
+              !playerName ||
+              password === null ||
+              !this.isSafeSessionDescription(message.offer, 'offer')
+            )
+              break;
             if (message.routeVersion !== undefined && routeVersion === undefined) break;
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
@@ -1598,41 +1787,63 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'screen-share-answer':
-          if (message.to !== this.localPlayerId || typeof message.from !== 'string' || typeof message.shareId !== 'string' || !message.answer?.sdp) break;
+          if (
+            message.to !== this.localPlayerId ||
+            typeof message.from !== 'string' ||
+            typeof message.shareId !== 'string' ||
+            !message.answer?.sdp
+          )
+            break;
           // 收到屏幕共享Answer
           {
             const session = this.authenticatedSession(message);
             const shareId = this.safeScreenShareId(message.shareId);
             const routeVersion = this.safeRouteVersion(message.routeVersion);
-            if (!session || !shareId || !this.isSafeSessionDescription(message.answer, 'answer')) break;
+            if (!session || !shareId || !this.isSafeSessionDescription(message.answer, 'answer'))
+              break;
             if (message.routeVersion !== undefined && routeVersion === undefined) break;
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
               const activeShares = (screenShareService as any).activeShares as Map<string, any>;
               const share = activeShares.get(shareId);
               if (!share || share.playerId !== session.peerId) break;
-              await screenShareService.handleAnswer({
-                shareId,
-                sdp: message.answer.sdp,
-                routeVersion,
-              }, session.peerId);
+              await screenShareService.handleAnswer(
+                {
+                  shareId,
+                  sdp: message.answer.sdp,
+                  routeVersion,
+                },
+                session.peerId
+              );
             } catch (error) {
               console.error('❌ 处理屏幕共享Answer失败:', error);
             }
           }
           break;
-          
+
         case 'screen-share-ice-candidate':
-          if (message.to !== this.localPlayerId || typeof message.from !== 'string' || typeof message.shareId !== 'string' || !message.candidate) break;
+          if (
+            message.to !== this.localPlayerId ||
+            typeof message.from !== 'string' ||
+            typeof message.shareId !== 'string' ||
+            !message.candidate
+          )
+            break;
           // 收到屏幕共享ICE候选
           {
             const session = this.authenticatedSession(message);
             const shareId = this.safeScreenShareId(message.shareId);
             const role = message.connectionRole;
             const routeVersion = this.safeRouteVersion(message.routeVersion);
-            if (!session || !shareId || !['in', 'out'].includes(role) || !this.isSafeIceCandidate(message.candidate)) break;
+            if (
+              !session ||
+              !shareId ||
+              !['in', 'out'].includes(role) ||
+              !this.isSafeIceCandidate(message.candidate)
+            )
+              break;
             if (message.routeVersion !== undefined && routeVersion === undefined) break;
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
@@ -1641,14 +1852,17 @@ export class WebRTCClient {
               if (!share) break;
               // `out` candidates are sent to the owner; `in` candidates are
               // sent to a viewer. Do not let a peer inject into the other role.
-              if ((role === 'out' && share.playerId !== this.localPlayerId) ||
-                  (role === 'in' && share.playerId !== session.peerId)) break;
+              if (
+                (role === 'out' && share.playerId !== this.localPlayerId) ||
+                (role === 'in' && share.playerId !== session.peerId)
+              )
+                break;
               await screenShareService.handleIceCandidate(
                 shareId,
                 message.candidate,
                 session.peerId,
                 role,
-                routeVersion,
+                routeVersion
               );
             } catch (error) {
               console.error('❌ 处理屏幕共享ICE候选失败:', error);
@@ -1663,13 +1877,30 @@ export class WebRTCClient {
             const action = message.action;
             const routeVersion = this.safeRouteVersion(message.routeVersion);
             const upstreamId = message.upstreamId === undefined ? undefined : message.upstreamId;
-            const downstreamId = message.downstreamId === undefined ? undefined : message.downstreamId;
-            const playerName = message.playerName === undefined
-              ? undefined
-              : sanitizeUntrustedText(message.playerName, MAX_PLAYER_NAME_LENGTH).trim();
-            const password = message.password === undefined ? undefined : sanitizeUntrustedText(message.password, 256);
-            const reason = message.reason === undefined ? undefined : sanitizeUntrustedText(message.reason, MAX_ANNOUNCEMENT_LENGTH).trim();
-            const validAction = ['join', 'health', 'ready', 'failure', 'accepted', 'route', 'child', 'detach'].includes(action);
+            const downstreamId =
+              message.downstreamId === undefined ? undefined : message.downstreamId;
+            const playerName =
+              message.playerName === undefined
+                ? undefined
+                : sanitizeUntrustedText(message.playerName, MAX_PLAYER_NAME_LENGTH).trim();
+            const password =
+              message.password === undefined
+                ? undefined
+                : sanitizeUntrustedText(message.password, 256);
+            const reason =
+              message.reason === undefined
+                ? undefined
+                : sanitizeUntrustedText(message.reason, MAX_ANNOUNCEMENT_LENGTH).trim();
+            const validAction = [
+              'join',
+              'health',
+              'ready',
+              'failure',
+              'accepted',
+              'route',
+              'child',
+              'detach',
+            ].includes(action);
             if (!session || !shareId || !validAction) break;
             if (message.routeVersion !== undefined && routeVersion === undefined) break;
             if (upstreamId !== undefined && !isSafeIdentifier(upstreamId)) break;
@@ -1677,26 +1908,50 @@ export class WebRTCClient {
             if (message.playerName !== undefined && !playerName) break;
             if (message.password !== undefined && typeof message.password !== 'string') break;
             if (message.reason !== undefined && !reason) break;
-            if (action === 'join' && (!playerName || (message.password !== undefined && typeof message.password !== 'string'))) break;
-            if (['ready', 'route', 'child', 'detach'].includes(action) && routeVersion === undefined) break;
+            if (
+              action === 'join' &&
+              (!playerName ||
+                (message.password !== undefined && typeof message.password !== 'string'))
+            )
+              break;
+            if (
+              ['ready', 'route', 'child', 'detach'].includes(action) &&
+              routeVersion === undefined
+            )
+              break;
             if (action === 'route' && !isSafeIdentifier(upstreamId)) break;
-            if (['child', 'detach'] .includes(action) && !isSafeIdentifier(downstreamId)) break;
+            if (['child', 'detach'].includes(action) && !isSafeIdentifier(downstreamId)) break;
             if (action === 'health') {
               const sourceSequence = message.sourceSequence ?? message.sequence;
               const sentSequence = message.sentSequence ?? message.sequence;
               if (
-                typeof sourceSequence !== 'number' || !Number.isSafeInteger(sourceSequence) || sourceSequence < 0 || sourceSequence > 1_000_000_000 ||
-                typeof sentSequence !== 'number' || !Number.isSafeInteger(sentSequence) || sentSequence < 0 || sentSequence > 1_000_000_000 ||
+                typeof sourceSequence !== 'number' ||
+                !Number.isSafeInteger(sourceSequence) ||
+                sourceSequence < 0 ||
+                sourceSequence > 1_000_000_000 ||
+                typeof sentSequence !== 'number' ||
+                !Number.isSafeInteger(sentSequence) ||
+                sentSequence < 0 ||
+                sentSequence > 1_000_000_000 ||
                 typeof message.limited !== 'boolean'
-              ) break;
+              )
+                break;
             }
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
               const activeShares = (screenShareService as any).activeShares as Map<string, any>;
               const share = activeShares.get(shareId);
               if (!share) break;
-              if (['join', 'ready', 'failure'].includes(action) && share.playerId !== this.localPlayerId) break;
-              if (['accepted', 'route', 'child', 'detach'].includes(action) && share.playerId !== session.peerId) break;
+              if (
+                ['join', 'ready', 'failure'].includes(action) &&
+                share.playerId !== this.localPlayerId
+              )
+                break;
+              if (
+                ['accepted', 'route', 'child', 'detach'].includes(action) &&
+                share.playerId !== session.peerId
+              )
+                break;
               await screenShareService.handleRelayControl({
                 ...message,
                 from: session.peerId,
@@ -1714,7 +1969,7 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'screen-share-viewer-left':
           // 收到查看者离开通知
           {
@@ -1732,7 +1987,7 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'screen-share-list-request':
           // 收到屏幕共享列表请求
           {
@@ -1741,9 +1996,12 @@ export class WebRTCClient {
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
               const myShares = screenShareService.getMyActiveShares().slice(0, 256);
-              myShares.forEach(share => {
+              myShares.forEach((share) => {
                 const shareId = this.safeScreenShareId(share.id);
-                const playerName = sanitizeUntrustedText(share.playerName, MAX_PLAYER_NAME_LENGTH).trim();
+                const playerName = sanitizeUntrustedText(
+                  share.playerName,
+                  MAX_PLAYER_NAME_LENGTH
+                ).trim();
                 if (!shareId || !shareId.startsWith('share-') || !playerName) return;
                 this.sendWebSocketMessage({
                   type: 'screen-share-list-response',
@@ -1753,7 +2011,9 @@ export class WebRTCClient {
                   playerName,
                   hasPassword: share.requirePassword === true,
                   viewerId: isSafeIdentifier(share.viewerId) ? share.viewerId : undefined,
-                  viewerName: share.viewerName ? sanitizeUntrustedText(share.viewerName, MAX_PLAYER_NAME_LENGTH).trim() : undefined,
+                  viewerName: share.viewerName
+                    ? sanitizeUntrustedText(share.viewerName, MAX_PLAYER_NAME_LENGTH).trim()
+                    : undefined,
                   viewerCount: this.safeViewerCount(share.viewerCount),
                 });
               });
@@ -1762,19 +2022,39 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'screen-share-list-response':
           // 收到屏幕共享列表响应
           {
             const peerId = this.authenticatedPeerId(message);
             const shareId = this.safeScreenShareId(message.shareId);
-            const playerName = sanitizeUntrustedText(message.playerName, MAX_PLAYER_NAME_LENGTH).trim();
+            const playerName = sanitizeUntrustedText(
+              message.playerName,
+              MAX_PLAYER_NAME_LENGTH
+            ).trim();
             const viewerId = message.viewerId === undefined ? undefined : message.viewerId;
-            const viewerName = message.viewerName === undefined ? undefined : sanitizeUntrustedText(message.viewerName, MAX_PLAYER_NAME_LENGTH).trim();
-            if (!peerId || !shareId || !shareId.startsWith('share-') || !playerName || typeof message.hasPassword !== 'boolean') break;
+            const viewerName =
+              message.viewerName === undefined
+                ? undefined
+                : sanitizeUntrustedText(message.viewerName, MAX_PLAYER_NAME_LENGTH).trim();
+            if (
+              !peerId ||
+              !shareId ||
+              !shareId.startsWith('share-') ||
+              !playerName ||
+              typeof message.hasPassword !== 'boolean'
+            )
+              break;
             if (viewerId !== undefined && !isSafeIdentifier(viewerId)) break;
             if (message.viewerName !== undefined && !viewerName) break;
-            if (message.viewerCount !== undefined && (typeof message.viewerCount !== 'number' || !Number.isSafeInteger(message.viewerCount) || message.viewerCount < 0 || message.viewerCount > 100_000)) break;
+            if (
+              message.viewerCount !== undefined &&
+              (typeof message.viewerCount !== 'number' ||
+                !Number.isSafeInteger(message.viewerCount) ||
+                message.viewerCount < 0 ||
+                message.viewerCount > 100_000)
+            )
+              break;
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
               const activeShares = (screenShareService as any).activeShares as Map<string, any>;
@@ -1794,36 +2074,52 @@ export class WebRTCClient {
                 viewerCount: this.safeViewerCount(message.viewerCount),
               };
               activeShares.set(share.id, share);
-              window.dispatchEvent(new CustomEvent('screen-share-start', {
-                detail: {
-                  shareId: share.id,
-                  playerId: share.playerId,
-                  playerName: share.playerName,
-                  hasPassword: share.requirePassword,
-                  viewerId: share.viewerId,
-                  viewerName: share.viewerName,
-                  viewerCount: share.viewerCount,
-                },
-              }));
+              window.dispatchEvent(
+                new CustomEvent('screen-share-start', {
+                  detail: {
+                    shareId: share.id,
+                    playerId: share.playerId,
+                    playerName: share.playerName,
+                    hasPassword: share.requirePassword,
+                    viewerId: share.viewerId,
+                    viewerName: share.viewerName,
+                    viewerCount: share.viewerCount,
+                  },
+                })
+              );
             } catch (error) {
               console.error('❌ 处理屏幕共享列表响应失败:', error);
             }
           }
           break;
-          
+
         case 'screen-share-update':
           // 收到共享状态更新
           {
             const peerId = this.authenticatedPeerId(message, false);
             const shareId = this.safeScreenShareId(message.shareId);
             const viewerId = message.viewerId === undefined ? undefined : message.viewerId;
-            const viewerName = message.viewerName === undefined ? undefined : sanitizeUntrustedText(message.viewerName, MAX_PLAYER_NAME_LENGTH).trim();
-            const viewerCount = message.viewerCount === undefined
-              ? (viewerId ? 1 : 0)
-              : this.safeViewerCount(message.viewerCount);
-            if (!peerId || !shareId || (viewerId !== undefined && !isSafeIdentifier(viewerId))) break;
+            const viewerName =
+              message.viewerName === undefined
+                ? undefined
+                : sanitizeUntrustedText(message.viewerName, MAX_PLAYER_NAME_LENGTH).trim();
+            const viewerCount =
+              message.viewerCount === undefined
+                ? viewerId
+                  ? 1
+                  : 0
+                : this.safeViewerCount(message.viewerCount);
+            if (!peerId || !shareId || (viewerId !== undefined && !isSafeIdentifier(viewerId)))
+              break;
             if (message.viewerName !== undefined && !viewerName) break;
-            if (message.viewerCount !== undefined && (typeof message.viewerCount !== 'number' || !Number.isSafeInteger(message.viewerCount) || message.viewerCount < 0 || message.viewerCount > 100_000)) break;
+            if (
+              message.viewerCount !== undefined &&
+              (typeof message.viewerCount !== 'number' ||
+                !Number.isSafeInteger(message.viewerCount) ||
+                message.viewerCount < 0 ||
+                message.viewerCount > 100_000)
+            )
+              break;
             try {
               const { screenShareService } = await import('../screenShare/ScreenShareService');
               const activeShares = (screenShareService as any).activeShares as Map<string, any>;
@@ -1833,10 +2129,18 @@ export class WebRTCClient {
               share.viewerName = viewerName;
               share.viewerCount = viewerCount;
               activeShares.set(shareId, share);
-              screenShareService.handleShareUpdate(shareId, viewerId, viewerName, viewerCount, peerId);
-              window.dispatchEvent(new CustomEvent('screen-share-update', {
-                detail: { shareId, viewerId, viewerName, viewerCount },
-              }));
+              screenShareService.handleShareUpdate(
+                shareId,
+                viewerId,
+                viewerName,
+                viewerCount,
+                peerId
+              );
+              window.dispatchEvent(
+                new CustomEvent('screen-share-update', {
+                  detail: { shareId, viewerId, viewerName, viewerCount },
+                })
+              );
             } catch (error) {
               console.error('❌ 处理共享状态更新失败:', error);
             }
@@ -1851,7 +2155,11 @@ export class WebRTCClient {
         case 'remote-control-ice':
         case 'remote-control-stop':
           try {
-            if (typeof message.from !== 'string' || typeof message.to !== 'string' || message.to !== this.localPlayerId) {
+            if (
+              typeof message.from !== 'string' ||
+              typeof message.to !== 'string' ||
+              message.to !== this.localPlayerId
+            ) {
               break;
             }
             const { remoteControlService } = await import('../remoteControl/RemoteControlService');
@@ -1859,41 +2167,106 @@ export class WebRTCClient {
             switch (message.type) {
               case 'remote-control-request': {
                 const request = session;
-                const fromName = sanitizeUntrustedText(message.fromName, MAX_PLAYER_NAME_LENGTH).trim();
+                const fromName = sanitizeUntrustedText(
+                  message.fromName,
+                  MAX_PLAYER_NAME_LENGTH
+                ).trim();
                 if (!request || !fromName) break;
-                remoteControlService.handleRequest(request.sessionId, request.peerId, fromName, this.localPlayerId);
+                remoteControlService.handleRequest(
+                  request.sessionId,
+                  request.peerId,
+                  fromName,
+                  this.localPlayerId
+                );
                 break;
               }
-              case 'remote-control-accept':
-              {
-                if (!session || !remoteControlService.isSessionForPeer(session.sessionId, session.peerId)) break;
-                await remoteControlService.handleAccept(session.sessionId, session.peerId, this.localPlayerId);
+              case 'remote-control-accept': {
+                if (
+                  !session ||
+                  !remoteControlService.isSessionForPeer(session.sessionId, session.peerId)
+                )
+                  break;
+                await remoteControlService.handleAccept(
+                  session.sessionId,
+                  session.peerId,
+                  this.localPlayerId
+                );
                 break;
               }
               case 'remote-control-reject': {
-                if (!session || !remoteControlService.isSessionForPeer(session.sessionId, session.peerId)) break;
-                const reason = sanitizeUntrustedText(message.reason, MAX_ANNOUNCEMENT_LENGTH).trim();
-                remoteControlService.handleReject(session.sessionId, session.peerId, this.localPlayerId, reason || 'rejected');
+                if (
+                  !session ||
+                  !remoteControlService.isSessionForPeer(session.sessionId, session.peerId)
+                )
+                  break;
+                const reason = sanitizeUntrustedText(
+                  message.reason,
+                  MAX_ANNOUNCEMENT_LENGTH
+                ).trim();
+                remoteControlService.handleReject(
+                  session.sessionId,
+                  session.peerId,
+                  this.localPlayerId,
+                  reason || 'rejected'
+                );
                 break;
               }
               case 'remote-control-offer': {
-                if (!session || !remoteControlService.isSessionForPeer(session.sessionId, session.peerId) || !this.isSafeSessionDescription(message.offer, 'offer')) break;
-                await remoteControlService.handleOffer(session.sessionId, session.peerId, this.localPlayerId, message.offer.sdp);
+                if (
+                  !session ||
+                  !remoteControlService.isSessionForPeer(session.sessionId, session.peerId) ||
+                  !this.isSafeSessionDescription(message.offer, 'offer')
+                )
+                  break;
+                await remoteControlService.handleOffer(
+                  session.sessionId,
+                  session.peerId,
+                  this.localPlayerId,
+                  message.offer.sdp
+                );
                 break;
               }
               case 'remote-control-answer': {
-                if (!session || !remoteControlService.isSessionForPeer(session.sessionId, session.peerId) || !this.isSafeSessionDescription(message.answer, 'answer')) break;
-                await remoteControlService.handleAnswer(session.sessionId, session.peerId, this.localPlayerId, message.answer.sdp);
+                if (
+                  !session ||
+                  !remoteControlService.isSessionForPeer(session.sessionId, session.peerId) ||
+                  !this.isSafeSessionDescription(message.answer, 'answer')
+                )
+                  break;
+                await remoteControlService.handleAnswer(
+                  session.sessionId,
+                  session.peerId,
+                  this.localPlayerId,
+                  message.answer.sdp
+                );
                 break;
               }
               case 'remote-control-ice': {
-                if (!session || !remoteControlService.isSessionForPeer(session.sessionId, session.peerId) || !this.isSafeIceCandidate(message.candidate)) break;
-                await remoteControlService.handleIce(session.sessionId, session.peerId, this.localPlayerId, message.candidate);
+                if (
+                  !session ||
+                  !remoteControlService.isSessionForPeer(session.sessionId, session.peerId) ||
+                  !this.isSafeIceCandidate(message.candidate)
+                )
+                  break;
+                await remoteControlService.handleIce(
+                  session.sessionId,
+                  session.peerId,
+                  this.localPlayerId,
+                  message.candidate
+                );
                 break;
               }
               case 'remote-control-stop': {
-                if (!session || !remoteControlService.isSessionForPeer(session.sessionId, session.peerId)) break;
-                remoteControlService.handleStop(session.sessionId, session.peerId, this.localPlayerId);
+                if (
+                  !session ||
+                  !remoteControlService.isSessionForPeer(session.sessionId, session.peerId)
+                )
+                  break;
+                remoteControlService.handleStop(
+                  session.sessionId,
+                  session.peerId,
+                  this.localPlayerId
+                );
                 break;
               }
             }
@@ -1901,33 +2274,56 @@ export class WebRTCClient {
             console.error('❌ 处理远程控制消息失败:', error);
           }
           break;
-          
+
         case 'file-share-added':
           // 收到文件共享添加通知
           {
             const peerId = this.authenticatedPeerId(message, false);
             const shareId = this.safeFileShareId(message.shareId);
-            const shareName = sanitizeUntrustedText(message.shareName, MAX_PATH_SEGMENT_LENGTH).trim();
-            const playerName = sanitizeUntrustedText(message.playerName, MAX_PLAYER_NAME_LENGTH).trim();
-            if (!peerId || !shareId || !shareName || !playerName || typeof message.hasPassword !== 'boolean') break;
-            window.dispatchEvent(new CustomEvent('file-share-added', {
-              detail: { shareId, shareName, playerId: peerId, playerName, hasPassword: message.hasPassword },
-            }));
+            const shareName = sanitizeUntrustedText(
+              message.shareName,
+              MAX_PATH_SEGMENT_LENGTH
+            ).trim();
+            const playerName = sanitizeUntrustedText(
+              message.playerName,
+              MAX_PLAYER_NAME_LENGTH
+            ).trim();
+            if (
+              !peerId ||
+              !shareId ||
+              !shareName ||
+              !playerName ||
+              typeof message.hasPassword !== 'boolean'
+            )
+              break;
+            window.dispatchEvent(
+              new CustomEvent('file-share-added', {
+                detail: {
+                  shareId,
+                  shareName,
+                  playerId: peerId,
+                  playerName,
+                  hasPassword: message.hasPassword,
+                },
+              })
+            );
           }
           break;
-          
+
         case 'file-share-removed':
           // 收到文件共享删除通知
           {
             const peerId = this.authenticatedPeerId(message, false);
             const shareId = this.safeFileShareId(message.shareId);
             if (!peerId || !shareId) break;
-            window.dispatchEvent(new CustomEvent('file-share-removed', {
-              detail: { shareId, playerId: peerId },
-            }));
+            window.dispatchEvent(
+              new CustomEvent('file-share-removed', {
+                detail: { shareId, playerId: peerId },
+              })
+            );
           }
           break;
-          
+
         case 'file-share-list-request':
           // 收到文件共享列表请求
           {
@@ -1939,9 +2335,19 @@ export class WebRTCClient {
                 ? localShares.slice(0, 256).flatMap((share) => {
                     if (!share || typeof share !== 'object') return [];
                     const shareId = this.safeFileShareId(share.id);
-                    const shareName = sanitizeUntrustedText(share.name, MAX_PATH_SEGMENT_LENGTH).trim();
+                    const shareName = sanitizeUntrustedText(
+                      share.name,
+                      MAX_PATH_SEGMENT_LENGTH
+                    ).trim();
                     if (!shareId || !shareName) return [];
-                    return [{ shareId, shareName, playerName: this.localPlayerName, hasPassword: !!share.password }];
+                    return [
+                      {
+                        shareId,
+                        shareName,
+                        playerName: this.localPlayerName,
+                        hasPassword: !!share.password,
+                      },
+                    ];
                   })
                 : [];
               if (shares.length > 0) {
@@ -1957,7 +2363,7 @@ export class WebRTCClient {
             }
           }
           break;
-          
+
         case 'file-share-list-response':
           // 收到文件共享列表响应
           {
@@ -1967,18 +2373,33 @@ export class WebRTCClient {
               if (!rawShare || typeof rawShare !== 'object') continue;
               const share = rawShare as Record<string, unknown>;
               const shareId = this.safeFileShareId(share.shareId);
-              const shareName = sanitizeUntrustedText(share.shareName, MAX_PATH_SEGMENT_LENGTH).trim();
-              const playerName = sanitizeUntrustedText(share.playerName, MAX_PLAYER_NAME_LENGTH).trim();
-              if (!shareId || !shareName || !playerName || typeof share.hasPassword !== 'boolean') continue;
-              window.dispatchEvent(new CustomEvent('file-share-added', {
-                detail: { shareId, shareName, playerId: peerId, playerName, hasPassword: share.hasPassword },
-              }));
+              const shareName = sanitizeUntrustedText(
+                share.shareName,
+                MAX_PATH_SEGMENT_LENGTH
+              ).trim();
+              const playerName = sanitizeUntrustedText(
+                share.playerName,
+                MAX_PLAYER_NAME_LENGTH
+              ).trim();
+              if (!shareId || !shareName || !playerName || typeof share.hasPassword !== 'boolean')
+                continue;
+              window.dispatchEvent(
+                new CustomEvent('file-share-added', {
+                  detail: {
+                    shareId,
+                    shareName,
+                    playerId: peerId,
+                    playerName,
+                    hasPassword: share.hasPassword,
+                  },
+                })
+              );
             }
           }
           break;
-          
+
         default:
-           console.warn(`未知消息类型: ${messageType}`);
+          console.warn(`未知消息类型: ${messageType}`);
       }
     } catch (error) {
       console.error(`❌ 处理WebSocket消息失败:`, error);
@@ -1995,43 +2416,43 @@ export class WebRTCClient {
         console.warn('⚠️ 忽略未认证或格式无效的 Offer');
         return;
       }
-      
+
       console.log(`📥 处理 Offer from ${peerId}`);
-      
+
       // 检查是否已经有连接
       let peer = this.peerConnections.get(peerId);
-      
+
       if (peer) {
         // 如果已经有连接，检查连接状态
         const state = peer.connection.connectionState;
         const signalingState = peer.connection.signalingState;
         console.log(`已存在连接，连接状态: ${state}, 信令状态: ${signalingState}`);
-        
+
         // 如果正在协商中，等待当前协商完成
         if (peer.isNegotiating) {
           console.log(`⏳ 正在协商中，等待当前协商完成...`);
           // 等待最多3秒
           let waitCount = 0;
           while (peer.isNegotiating && waitCount < 30) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             waitCount++;
           }
-          
+
           if (peer.isNegotiating) {
             console.warn(`⚠️ 等待协商超时，强制处理新的 Offer`);
             peer.isNegotiating = false;
           }
         }
-        
+
         // 已建立或正在建立连接时，新 Offer 可能是 ICE 重启或双方兜底重连。
         // connecting 状态也必须处理，否则旧连接卡住后会永久忽略所有自愈 Offer。
         if (state === 'connected' || state === 'connecting') {
           console.log(`🔄 收到连接重协商 Offer，开始处理...`);
-          
+
           try {
             // 标记正在协商
             peer.isNegotiating = true;
-            
+
             // 检查当前信令状态，优先处理 offer 冲突（glare）
             const currentSignalingState = peer.connection.signalingState;
             if (currentSignalingState !== 'stable') {
@@ -2042,7 +2463,7 @@ export class WebRTCClient {
                 console.warn(`⚠️ 信令状态不是 stable (${currentSignalingState})，等待状态恢复...`);
                 let waitCount = 0;
                 while (peer.connection.signalingState !== 'stable' && waitCount < 20) {
-                  await new Promise(resolve => setTimeout(resolve, 100));
+                  await new Promise((resolve) => setTimeout(resolve, 100));
                   waitCount++;
                 }
 
@@ -2057,11 +2478,11 @@ export class WebRTCClient {
             // 设置远程描述（重新协商）
             await peer.connection.setRemoteDescription(new RTCSessionDescription(message.offer));
             console.log(`✅ 已设置重新协商的 Remote Description from ${peerId}`);
-            
+
             // 创建 answer
             const answer = await peer.connection.createAnswer();
             await peer.connection.setLocalDescription(answer);
-            
+
             // 发送 answer 通过 WebSocket
             const answerSent = this.sendWebSocketMessage({
               type: 'answer',
@@ -2078,7 +2499,7 @@ export class WebRTCClient {
             } else {
               console.warn(`⚠️ 重新协商的 Answer 发送失败 to ${peerId}`);
             }
-            
+
             // 标记协商完成
             peer.isNegotiating = false;
             return;
@@ -2088,28 +2509,28 @@ export class WebRTCClient {
             // 如果重新协商失败，继续执行下面的逻辑（清理并重新创建连接）
           }
         }
-        
+
         // 如果连接失败或断开，先清理旧连接
         console.log(`清理旧连接...`);
         this.removePeerConnection(peerId);
       }
-      
+
       // 创建新的 peer connection
       await this.createPeerConnection(peerId);
-      
+
       peer = this.peerConnections.get(peerId);
       if (!peer) {
         throw new Error('创建 Peer connection 失败');
       }
-      
+
       // 标记正在协商
       peer.isNegotiating = true;
-      
+
       // 设置远程描述
       await peer.connection.setRemoteDescription(new RTCSessionDescription(message.offer));
       peer.remoteDescriptionSet = true;
       console.log(`✅ 已设置 Remote Description from ${peerId}`);
-      
+
       // 处理队列中的ICE候选
       if (peer.iceCandidateQueue.length > 0) {
         console.log(`📦 处理队列中的 ${peer.iceCandidateQueue.length} 个 ICE Candidate`);
@@ -2122,14 +2543,14 @@ export class WebRTCClient {
         }
         peer.iceCandidateQueue = [];
       }
-      
+
       // 等待ICE候选收集开始
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       // 创建 answer
       const answer = await peer.connection.createAnswer();
       await peer.connection.setLocalDescription(answer);
-      
+
       // 发送 answer 通过 WebSocket
       const answerSent = this.sendWebSocketMessage({
         type: 'answer',
@@ -2146,13 +2567,12 @@ export class WebRTCClient {
       } else {
         console.warn(`⚠️ Answer 发送失败 to ${peerId}`);
       }
-      
+
       // 标记协商完成
       peer.isNegotiating = false;
-      
     } catch (error) {
       console.error(`❌ 处理 Offer 失败:`, error);
-      
+
       // 确保清除协商标记
       const peer = this.peerConnections.get(message.from);
       if (peer) {
@@ -2172,17 +2592,17 @@ export class WebRTCClient {
         return;
       }
       const peer = this.peerConnections.get(peerId);
-      
+
       if (!peer) {
         console.warn(`⚠️ 未找到 peer: ${peerId}`);
         return;
       }
-      
+
       // 设置远程描述
       await peer.connection.setRemoteDescription(new RTCSessionDescription(message.answer));
       peer.remoteDescriptionSet = true;
       console.log(`✅ 已设置 Remote Description (Answer) from ${peerId}`);
-      
+
       // 处理队列中的ICE候选
       if (peer.iceCandidateQueue.length > 0) {
         console.log(`📦 处理队列中的 ${peer.iceCandidateQueue.length} 个 ICE Candidate`);
@@ -2195,7 +2615,6 @@ export class WebRTCClient {
         }
         peer.iceCandidateQueue = [];
       }
-      
     } catch (error) {
       console.error(`❌ 处理 Answer 失败:`, error);
     }
@@ -2212,25 +2631,24 @@ export class WebRTCClient {
         return;
       }
       const peer = this.peerConnections.get(peerId);
-      
+
       if (!peer) {
         console.warn(`⚠️ 未找到 peer: ${peerId}，忽略 ICE Candidate`);
         return;
       }
-      
+
       const candidate = new RTCIceCandidate(message.candidate);
-      
+
       // 如果远程描述还没设置，将候选加入队列
       if (!peer.remoteDescriptionSet) {
         console.log(`📦 远程描述未设置，将 ICE Candidate 加入队列 (${peerId})`);
         peer.iceCandidateQueue.push(candidate);
         return;
       }
-      
+
       // 添加 ICE 候选
       await peer.connection.addIceCandidate(candidate);
       console.log(`✅ ICE Candidate 已添加 from ${peerId}`);
-      
     } catch (error) {
       console.error(`❌ 处理 ICE Candidate 失败:`, error);
     }
@@ -2249,7 +2667,12 @@ export class WebRTCClient {
       console.warn('⚠️ 拒绝发送伪造发送者身份的信令消息');
       return false;
     }
-    if (message.to !== undefined && (!isSafeIdentifier(message.to) || message.to === this.localPlayerId || !this.knownPlayers.has(message.to))) {
+    if (
+      message.to !== undefined &&
+      (!isSafeIdentifier(message.to) ||
+        message.to === this.localPlayerId ||
+        !this.knownPlayers.has(message.to))
+    ) {
       console.warn('⚠️ 拒绝发送给未知信令目标');
       return false;
     }
@@ -2326,7 +2749,11 @@ export class WebRTCClient {
     }
   }
 
-  private async sendOfferWithRetry(peerId: string, offer: RTCSessionDescriptionInit, context: string): Promise<boolean> {
+  private async sendOfferWithRetry(
+    peerId: string,
+    offer: RTCSessionDescriptionInit,
+    context: string
+  ): Promise<boolean> {
     const sent = this.sendWebSocketMessage({
       type: 'offer',
       from: this.localPlayerId,
@@ -2343,7 +2770,7 @@ export class WebRTCClient {
     }
 
     console.warn(`⚠️ ${context} Offer 首次发送失败，500ms 后重试: ${peerId}`);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const retrySent = this.sendWebSocketMessage({
       type: 'offer',
@@ -2525,7 +2952,7 @@ export class WebRTCClient {
         if (pc.connectionTimeout) {
           clearTimeout(pc.connectionTimeout);
         }
-        
+
         // 停止并清理音频播放
         if (pc.audioElement) {
           try {
@@ -2538,11 +2965,11 @@ export class WebRTCClient {
             console.warn(`清理音频元素失败 (${peerId}):`, audioError);
           }
         }
-        
+
         // 停止音频流的所有轨道
         if (pc.audioStream) {
           try {
-            pc.audioStream.getTracks().forEach(track => {
+            pc.audioStream.getTracks().forEach((track) => {
               try {
                 track.stop();
               } catch (trackError) {
@@ -2553,7 +2980,7 @@ export class WebRTCClient {
             console.warn(`停止音频流失败 (${peerId}):`, streamError);
           }
         }
-        
+
         // 关闭数据通道
         if (pc.dataChannel) {
           try {
@@ -2562,7 +2989,7 @@ export class WebRTCClient {
             pc.dataChannel.onclose = null;
             pc.dataChannel.onerror = null;
             pc.dataChannel.onmessage = null;
-            
+
             // 只有在数据通道未关闭时才关闭
             if (pc.dataChannel.readyState !== 'closed') {
               pc.dataChannel.close();
@@ -2571,7 +2998,7 @@ export class WebRTCClient {
             console.warn(`关闭数据通道失败 (${peerId}):`, dcError);
           }
         }
-        
+
         // 关闭连接
         try {
           // 移除所有事件监听器
@@ -2581,7 +3008,7 @@ export class WebRTCClient {
           pc.connection.oniceconnectionstatechange = null;
           pc.connection.onicegatheringstatechange = null;
           pc.connection.ondatachannel = null;
-          
+
           // 只有在连接未关闭时才关闭
           if (pc.connection.connectionState !== 'closed') {
             pc.connection.close();
@@ -2589,7 +3016,7 @@ export class WebRTCClient {
         } catch (connError) {
           console.warn(`关闭连接失败 (${peerId}):`, connError);
         }
-        
+
         this.peerConnections.delete(peerId);
         this.voiceHealth.delete(peerId);
         console.log(`✅ 已移除 peer connection: ${peerId}`);
@@ -2607,7 +3034,7 @@ export class WebRTCClient {
   private removePeer(peerId: string): void {
     this.clearPeerReconnectState(peerId);
     this.removePeerConnection(peerId);
-    
+
     // 触发回调
     if (this.onPlayerLeftCallback) {
       this.onPlayerLeftCallback(peerId);
@@ -2622,44 +3049,48 @@ export class WebRTCClient {
   private async handleReconnect(peerId: string, forceInitiate: boolean = false): Promise<void> {
     try {
       console.log(`🔄 开始重连 ${peerId}...（forceInitiate=${forceInitiate}）`);
-      
+
       // 检查是否已经在重连中
       const existingPeer = this.peerConnections.get(peerId);
       if (existingPeer && this.isPeerConnectedOrFresh(existingPeer)) {
         console.log(`⏳ ${peerId} 已经在重连中，跳过...`);
         return;
       }
-      
+
       // 移除旧连接（不触发回调）
       this.removePeerConnection(peerId);
-      
+
       // 等待一小段时间让旧连接完全关闭
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // ID字典序较大的一方主动重连；或在兜底场景下由较小一方强制发起，
       // 避免「较大一方未察觉故障」时双方都不重连导致永久掉线
       if (forceInitiate || this.localPlayerId > peerId) {
         console.log(`📡 主动重连 ${peerId}（${forceInitiate ? '兜底强制发起' : 'ID字典序较大'}）`);
-        
+
         // 创建新连接
         await this.createPeerConnection(peerId);
-        
+
         const pc = this.peerConnections.get(peerId);
         if (!pc) {
           throw new Error('创建 Peer Connection 失败');
         }
-        
+
         // 等待ICE候选收集开始
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         // 创建并发送 offer（使用 ICE restart）
         const offer = await pc.connection.createOffer({ iceRestart: true });
         await pc.connection.setLocalDescription(offer);
-        
-        const sent = await this.sendOfferWithRetry(peerId, {
-          type: offer.type,
-          sdp: offer.sdp,
-        }, '重连');
+
+        const sent = await this.sendOfferWithRetry(
+          peerId,
+          {
+            type: offer.type,
+            sdp: offer.sdp,
+          },
+          '重连'
+        );
         if (!sent) throw new Error('重连 Offer 未送达');
       } else {
         console.log(`⏳ 等待 ${peerId} 主动重连（ID字典序较小）`);
@@ -2694,13 +3125,13 @@ export class WebRTCClient {
   private async createPeerConnection(peerId: string): Promise<void> {
     try {
       console.log(`📡 创建 Peer Connection for ${peerId}...`);
-      
+
       // 配置RTCPeerConnection - 使用与测试成功版本相同的配置
       const config: RTCConfiguration = {
         iceServers: this.iceServers,
         iceTransportPolicy: 'all',
       };
-      
+
       const pc = new RTCPeerConnection(config);
       console.log('RTCPeerConnection 实例已创建');
       console.log('虚拟IP:', this.virtualIp || '未设置');
@@ -2736,10 +3167,10 @@ export class WebRTCClient {
           console.log('  - Protocol:', event.candidate.protocol);
           console.log('  - Address:', event.candidate.address);
           console.log('  - Port:', event.candidate.port);
-          
+
           // 接受所有类型的ICE候选以支持跨局域网连接
           console.log(`✅ 接受 ${event.candidate.type} 类型的候选: ${event.candidate.address}`);
-          
+
           try {
             // 通过 WebSocket 发送 ICE 候选
             this.sendWebSocketMessage({
@@ -2764,17 +3195,17 @@ export class WebRTCClient {
       // 监听连接状态变化
       pc.onconnectionstatechange = async () => {
         console.log(`🔗 连接状态变化 (${peerId}): ${pc.connectionState}`);
-        
+
         const peer = this.peerConnections.get(peerId);
         if (!peer) {
           console.warn(`⚠️ 连接状态变化时未找到 peer: ${peerId}`);
           return;
         }
-        
+
         if (pc.connectionState === 'connected') {
           console.log(`✅ 与 ${peerId} 的连接已建立`);
           this.clearPeerReconnectState(peerId);
-          
+
           // 清除连接超时定时器
           if (peer.connectionTimeout) {
             clearTimeout(peer.connectionTimeout);
@@ -2782,26 +3213,26 @@ export class WebRTCClient {
           }
         } else if (pc.connectionState === 'failed') {
           console.warn(`⚠️ 与 ${peerId} 的连接失败`);
-          
+
           // 清除连接超时定时器
           if (peer.connectionTimeout) {
             clearTimeout(peer.connectionTimeout);
             peer.connectionTimeout = undefined;
           }
-          
+
           // 清除旧的重连定时器
           this.clearPeerReconnectState(peerId);
-          
+
           // 双方都进入独立重连状态机。调度器负责去重，并为较小 ID
           // 提供延迟兜底发起，避免一方故障时双方永久互等。
           console.log(`🔄 连接失败，调度重连 ${peerId}...`);
           this.schedulePeerReconnect(peerId, '连接失败', 4000);
         } else if (pc.connectionState === 'disconnected') {
           console.warn(`⚠️ 与 ${peerId} 的连接断开`);
-          
+
           // 清除旧的重连定时器
           this.clearPeerReconnectState(peerId);
-          
+
           // 给 ICE 留出恢复窗口，恢复失败后由双方状态机协同重建。
           console.log(`🔄 连接断开，调度重连 ${peerId}...`);
           this.schedulePeerReconnect(peerId, '连接断开', 6000);
@@ -2823,7 +3254,7 @@ export class WebRTCClient {
           console.log(`✅ ICE 连接成功 with ${peerId}`);
         }
       };
-      
+
       // 监听 ICE gathering 状态
       pc.onicegatheringstatechange = () => {
         console.log(`🔍 ICE Gathering 状态 (${peerId}): ${pc.iceGatheringState}`);
@@ -2835,7 +3266,7 @@ export class WebRTCClient {
         console.log('Stream ID:', event.streams[0]?.id);
         console.log('Track kind:', event.track.kind);
         console.log('Track enabled:', event.track.enabled);
-        
+
         if (event.streams[0]) {
           try {
             // 创建音频元素播放远程音频
@@ -2863,16 +3294,16 @@ export class WebRTCClient {
             // 【修复】对新建立 / 重连的对端应用当前已有的静音和音量设置，
             // 否则后加入或重连的玩家会以默认 1.0 音量、未静音播放（旧逻辑写死 volume=1.0）
             this.applyCurrentAudioState(peerId, audioElement);
-            
+
             // 监听播放事件
             audioElement.onplay = () => {
               console.log(`✅ 开始播放 ${peerId} 的音频`);
             };
-            
+
             audioElement.onerror = (e) => {
               console.error(`❌ 播放 ${peerId} 的音频失败:`, e);
             };
-            
+
             // 触发回调
             if (this.onRemoteStreamCallback) {
               this.onRemoteStreamCallback(peerId, event.streams[0]);
@@ -2888,15 +3319,15 @@ export class WebRTCClient {
         ordered: true,
         maxRetransmits: 3,
       });
-      
+
       dataChannel.onopen = () => {
         console.log(`📢 数据通道已打开 with ${peerId}`);
       };
-      
+
       dataChannel.onclose = () => {
         console.log(`📢 数据通道已关闭 with ${peerId}`);
       };
-      
+
       dataChannel.onerror = (error) => {
         if (this.isExpectedChannelCloseError(error)) {
           console.log(`ℹ️ 数据通道正常关闭 with ${peerId}`);
@@ -2907,24 +3338,24 @@ export class WebRTCClient {
         // 数据通道错误不应该导致整个连接失败
         // 只记录错误，不触发重连
       };
-      
+
       // 创建文件传输专用数据通道（大缓冲区，无序传输以提高速度）
       const fileTransferChannel = pc.createDataChannel('file-transfer', {
         ordered: false, // 无序传输，提高速度
         maxPacketLifeTime: 3000, // 3秒超时
       });
-      
+
       // 设置大缓冲区阈值
       fileTransferChannel.bufferedAmountLowThreshold = 256 * 1024; // 256KB
-      
+
       fileTransferChannel.onopen = () => {
         console.log(`📁 文件传输通道已打开 with ${peerId}`);
       };
-      
+
       fileTransferChannel.onclose = () => {
         console.log(`📁 文件传输通道已关闭 with ${peerId}`);
       };
-      
+
       fileTransferChannel.onerror = (error) => {
         if (this.isExpectedChannelCloseError(error)) {
           console.log(`ℹ️ 文件传输通道正常关闭 with ${peerId}`);
@@ -2933,29 +3364,29 @@ export class WebRTCClient {
 
         console.error(`❌ 文件传输通道错误 with ${peerId}:`, error);
       };
-      
+
       fileTransferChannel.onmessage = (event) => {
         // 处理接收到的文件数据
         fileTransferService.handleDataChannelMessage(peerId, event.data);
       };
-      
+
       // 监听对方创建的数据通道
       pc.ondatachannel = (event) => {
         console.log(`📥 收到数据通道 from ${peerId}: ${event.channel.label}`);
         const receivedChannel = event.channel;
-        
+
         if (receivedChannel.label === 'file-transfer') {
           // 文件传输通道
           receivedChannel.bufferedAmountLowThreshold = 256 * 1024;
-          
+
           receivedChannel.onopen = () => {
             console.log(`📁 接收的文件传输通道已打开 with ${peerId}`);
           };
-          
+
           receivedChannel.onclose = () => {
             console.log(`📁 接收的文件传输通道已关闭 with ${peerId}`);
           };
-          
+
           receivedChannel.onerror = (error) => {
             if (this.isExpectedChannelCloseError(error)) {
               console.log(`ℹ️ 接收的文件传输通道正常关闭 with ${peerId}`);
@@ -2964,11 +3395,11 @@ export class WebRTCClient {
 
             console.error(`❌ 接收的文件传输通道错误 with ${peerId}:`, error);
           };
-          
+
           receivedChannel.onmessage = (event) => {
             fileTransferService.handleDataChannelMessage(peerId, event.data);
           };
-          
+
           const peerConn = this.peerConnections.get(peerId);
           if (peerConn) {
             peerConn.fileTransferChannel = receivedChannel;
@@ -2978,11 +3409,11 @@ export class WebRTCClient {
           receivedChannel.onopen = () => {
             console.log(`📢 接收的数据通道已打开 with ${peerId}`);
           };
-          
+
           receivedChannel.onclose = () => {
             console.log(`📢 接收的数据通道已关闭 with ${peerId}`);
           };
-          
+
           receivedChannel.onerror = (error) => {
             if (this.isExpectedChannelCloseError(error)) {
               console.log(`ℹ️ 接收的数据通道正常关闭 with ${peerId}`);
@@ -2991,7 +3422,7 @@ export class WebRTCClient {
 
             console.error(`❌ 接收的数据通道错误 with ${peerId}:`, error);
           };
-          
+
           const peerConn = this.peerConnections.get(peerId);
           if (peerConn) {
             peerConn.dataChannel = receivedChannel;
@@ -3010,15 +3441,15 @@ export class WebRTCClient {
         isNegotiating: false,
         createdAt: Date.now(),
       };
-      
+
       this.peerConnections.set(peerId, peerConnection);
-      
+
       // 设置连接超时（30秒）
       peerConnection.connectionTimeout = window.setTimeout(() => {
         const currentPc = this.peerConnections.get(peerId);
         if (currentPc && currentPc.connection.connectionState !== 'connected') {
           console.warn(`⏰ 连接超时 (${peerId})，状态: ${currentPc.connection.connectionState}`);
-          
+
           console.log(`🔄 连接超时，调度重连 ${peerId}...`);
           this.schedulePeerReconnect(peerId, '连接超时', 2000);
         }
@@ -3052,11 +3483,16 @@ export class WebRTCClient {
       console.log('✅ 麦克风权限已获取');
       return stream;
     } catch (error: any) {
-      if (notifyPermissionRequired && (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError')) {
+      if (
+        notifyPermissionRequired &&
+        (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError')
+      ) {
         console.warn('⚠️ 麦克风权限被拒绝，显示权限恢复入口');
-        window.dispatchEvent(new CustomEvent('mctier-microphone-permission-required', {
-          detail: { resumeMic: this.desiredMicEnabled },
-        }));
+        window.dispatchEvent(
+          new CustomEvent('mctier-microphone-permission-required', {
+            detail: { resumeMic: this.desiredMicEnabled },
+          })
+        );
       }
       throw error;
     }
@@ -3065,7 +3501,7 @@ export class WebRTCClient {
   /** 供设置页和权限恢复弹窗主动重新触发系统授权。 */
   async requestMicrophoneAccess(notifyPermissionRequired = true): Promise<void> {
     const stream = await this.requestMicrophonePermission(notifyPermissionRequired);
-    stream.getTracks().forEach(track => track.stop());
+    stream.getTracks().forEach((track) => track.stop());
   }
 
   /**
@@ -3084,7 +3520,9 @@ export class WebRTCClient {
     this.desiredMicEnabled = enabled;
     const run = this.micOpChain.then(() => this.convergeMicState());
     // 保存链尾（吞掉异常，避免一次失败后整条链被 reject 而后续操作全部不执行）
-    this.micOpChain = run.catch(() => { /* 错误已在内部记录 */ });
+    this.micOpChain = run.catch(() => {
+      /* 错误已在内部记录 */
+    });
     return run;
   }
 
@@ -3130,7 +3568,7 @@ export class WebRTCClient {
 
         for (const [peerId, pc] of this.peerConnections) {
           const transceivers = pc.connection.getTransceivers();
-          const audioTransceiver = transceivers.find(t => t.receiver.track.kind === 'audio');
+          const audioTransceiver = transceivers.find((t) => t.receiver.track.kind === 'audio');
 
           if (audioTransceiver && audioTransceiver.sender) {
             await audioTransceiver.sender.replaceTrack(newAudioTrack);
@@ -3145,11 +3583,15 @@ export class WebRTCClient {
 
         if (this.localStream) {
           const oldTracks = this.localStream.getAudioTracks();
-          oldTracks.forEach(track => track.stop());
+          oldTracks.forEach((track) => track.stop());
         }
 
         this.localStream = newStream;
-        try { this.onLocalStreamCallback?.(newStream); } catch { /* ignore */ }
+        try {
+          this.onLocalStreamCallback?.(newStream);
+        } catch {
+          /* ignore */
+        }
       } else {
         // 先停止本地音轨（若有）
         if (this.localStream) {
@@ -3165,7 +3607,9 @@ export class WebRTCClient {
         // 旧实现把这段放在 if (this.localStream) 内部，一旦状态出现漂移（localStream 已为空
         // 但 sender 上仍挂着轨道），关麦就会「看起来成功、实际仍在传声」。
         for (const [peerId, pc] of this.peerConnections) {
-          const audioTransceiver = pc.connection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+          const audioTransceiver = pc.connection
+            .getTransceivers()
+            .find((t) => t.receiver.track.kind === 'audio');
 
           if (audioTransceiver?.sender) {
             await audioTransceiver.sender.replaceTrack(null);
@@ -3180,7 +3624,11 @@ export class WebRTCClient {
           this.rawMicStream = null;
         }
         voiceChangerService.dispose();
-        try { this.onLocalStreamCallback?.(null); } catch { /* ignore */ }
+        try {
+          this.onLocalStreamCallback?.(null);
+        } catch {
+          /* ignore */
+        }
         console.log('✅ 麦克风已关闭，资源已释放');
       }
 
@@ -3194,7 +3642,6 @@ export class WebRTCClient {
       throw error;
     }
   }
-
 
   /**
    * 根据当前 Store 中的全局静音 / 单人静音 / 单人音量设置，应用到指定玩家的音频元素。
@@ -3219,13 +3666,14 @@ export class WebRTCClient {
         if (!sameVoiceGroup || (mutedPlayers && mutedPlayers.has(playerId))) {
           audioElement.volume = 0;
         } else {
-          const vol = playerVolumes && playerVolumes.has(playerId)
-            ? playerVolumes.get(playerId)!
-            : 1.0;
+          const vol =
+            playerVolumes && playerVolumes.has(playerId) ? playerVolumes.get(playerId)! : 1.0;
           audioElement.volume = Math.max(0, Math.min(1, vol));
         }
 
-        console.log(`🎚️ 已对 ${playerId} 应用现有音频状态: muted=${audioElement.muted}, volume=${audioElement.volume}`);
+        console.log(
+          `🎚️ 已对 ${playerId} 应用现有音频状态: muted=${audioElement.muted}, volume=${audioElement.volume}`
+        );
       })
       .catch((err) => {
         console.warn('应用现有音频状态失败（使用默认值）:', err);
@@ -3351,7 +3799,6 @@ export class WebRTCClient {
     }
   }
 
-
   /**
    * 启动心跳
    */
@@ -3385,13 +3832,13 @@ export class WebRTCClient {
   private startWebSocketHeartbeat(): void {
     // 清理旧的心跳定时器
     this.stopWebSocketHeartbeat();
-    
+
     // 每 15 秒发送一次 ping（从30秒优化为15秒）
     this.websocketHeartbeatInterval = window.setInterval(() => {
       if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
         try {
           this.websocket.send(JSON.stringify({ type: 'ping' }));
-          
+
           // 设置 pong 超时（5秒内没收到 pong 就认为连接断开，从10秒优化为5秒）
           this.websocketPongTimeout = window.setTimeout(() => {
             console.warn('⚠️ WebSocket 心跳超时（5秒未收到pong），主动断开重连');
@@ -3404,7 +3851,7 @@ export class WebRTCClient {
         }
       }
     }, 15000);
-    
+
     console.log('✅ WebSocket 心跳已启动（间隔15秒，超时5秒）');
   }
 
@@ -3437,10 +3884,24 @@ export class WebRTCClient {
   /**
    * 设置事件回调
    */
-  onPlayerJoined(callback: (playerId: string, playerName: string, virtualIp?: string, virtualDomain?: string, useDomain?: boolean) => void): void {
+  onPlayerJoined(
+    callback: (
+      playerId: string,
+      playerName: string,
+      virtualIp?: string,
+      virtualDomain?: string,
+      useDomain?: boolean
+    ) => void
+  ): void {
     this.onPlayerJoinedCallback = callback;
     for (const [playerId, player] of this.pendingPlayerJoined) {
-      callback(playerId, player.playerName, player.virtualIp, player.virtualDomain, player.useDomain);
+      callback(
+        playerId,
+        player.playerName,
+        player.virtualIp,
+        player.virtualDomain,
+        player.useDomain
+      );
     }
     this.pendingPlayerJoined.clear();
   }
@@ -3450,15 +3911,28 @@ export class WebRTCClient {
     playerName: string,
     virtualIp?: string,
     virtualDomain?: string,
-    useDomain?: boolean,
+    useDomain?: boolean
   ): void {
-    if (!isSafeIdentifier(playerId) || playerId === this.localPlayerId || !this.knownPlayers.has(playerId)) return;
-    const safePlayerName = sanitizeUntrustedText(playerName, MAX_PLAYER_NAME_LENGTH).trim() || tl('未知玩家', 'Unknown player');
+    if (
+      !isSafeIdentifier(playerId) ||
+      playerId === this.localPlayerId ||
+      !this.knownPlayers.has(playerId)
+    )
+      return;
+    const safePlayerName =
+      sanitizeUntrustedText(playerName, MAX_PLAYER_NAME_LENGTH).trim() ||
+      tl('未知玩家', 'Unknown player');
     const safeVirtualIp = isSafeVirtualIp(virtualIp) ? virtualIp.trim() : undefined;
     const safeVirtualDomain = isSafeVirtualDomain(virtualDomain) ? virtualDomain.trim() : undefined;
     const safeUseDomain = useDomain === true && !!safeVirtualIp && !!safeVirtualDomain;
     if (this.onPlayerJoinedCallback) {
-      this.onPlayerJoinedCallback(playerId, safePlayerName, safeVirtualIp, safeVirtualDomain, safeUseDomain);
+      this.onPlayerJoinedCallback(
+        playerId,
+        safePlayerName,
+        safeVirtualIp,
+        safeVirtualDomain,
+        safeUseDomain
+      );
       return;
     }
     this.pendingPlayerJoined.set(playerId, {
@@ -3500,14 +3974,18 @@ export class WebRTCClient {
     }
   }
 
-  onChatMessage(callback: (playerId: string, playerName: string, content: string, timestamp: number) => void): void {
+  onChatMessage(
+    callback: (playerId: string, playerName: string, content: string, timestamp: number) => void
+  ): void {
     this.onChatMessageCallback = callback;
   }
 
   /**
    * 设置版本错误回调
    */
-  onVersionError(callback: (currentVersion: string, minimumVersion: string, downloadUrl: string) => void): void {
+  onVersionError(
+    callback: (currentVersion: string, minimumVersion: string, downloadUrl: string) => void
+  ): void {
     this.onVersionErrorCallback = callback;
   }
 
@@ -3536,7 +4014,11 @@ export class WebRTCClient {
   kickPlayer(targetId: string): boolean {
     const safeTargetId = sanitizeIdentifier(targetId);
     if (!this.knownPlayers.has(safeTargetId) || safeTargetId === this.localPlayerId) return false;
-    return this.sendWebSocketMessage({ type: 'kick-player', from: this.localPlayerId, target: safeTargetId });
+    return this.sendWebSocketMessage({
+      type: 'kick-player',
+      from: this.localPlayerId,
+      target: safeTargetId,
+    });
   }
 
   /**
@@ -3580,7 +4062,7 @@ export class WebRTCClient {
       this.clearPeerReconnectState(safePeerId);
 
       // 给对端一点时间完成拆除，再发起新的 Offer
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       await this.handleReconnect(safePeerId, true);
       console.log('✅ [语音重连] 已发起新的连接协商');
@@ -3601,27 +4083,52 @@ export class WebRTCClient {
   /** 禁言/解除禁言玩家（仅房主有效） */
   setPlayerMuted(targetId: string, muted: boolean): boolean {
     const safeTargetId = sanitizeIdentifier(targetId);
-    if (!this.knownPlayers.has(safeTargetId) || safeTargetId === this.localPlayerId || typeof muted !== 'boolean') return false;
-    return this.sendWebSocketMessage({ type: 'mute-player', from: this.localPlayerId, target: safeTargetId, muted });
+    if (
+      !this.knownPlayers.has(safeTargetId) ||
+      safeTargetId === this.localPlayerId ||
+      typeof muted !== 'boolean'
+    )
+      return false;
+    return this.sendWebSocketMessage({
+      type: 'mute-player',
+      from: this.localPlayerId,
+      target: safeTargetId,
+      muted,
+    });
   }
   /** 转让房主（仅房主有效） */
   transferHost(targetId: string): boolean {
     const safeTargetId = sanitizeIdentifier(targetId);
     if (!this.knownPlayers.has(safeTargetId) || safeTargetId === this.localPlayerId) return false;
-    return this.sendWebSocketMessage({ type: 'transfer-host', from: this.localPlayerId, target: safeTargetId });
+    return this.sendWebSocketMessage({
+      type: 'transfer-host',
+      from: this.localPlayerId,
+      target: safeTargetId,
+    });
   }
   /** 设置大厅选项（仅房主有效），maxPlayers 传 0 表示取消上限 */
-  setLobbyOptions(opts: { maxPlayers?: number; isPublic?: boolean; description?: string; serverNode?: string }): boolean {
+  setLobbyOptions(opts: {
+    maxPlayers?: number;
+    isPublic?: boolean;
+    description?: string;
+    serverNode?: string;
+  }): boolean {
     const next: Record<string, unknown> = { type: 'set-lobby-options', from: this.localPlayerId };
     if (opts.maxPlayers !== undefined) {
-      if (!Number.isSafeInteger(opts.maxPlayers) || opts.maxPlayers < 0 || opts.maxPlayers > 100_000) return false;
+      if (
+        !Number.isSafeInteger(opts.maxPlayers) ||
+        opts.maxPlayers < 0 ||
+        opts.maxPlayers > 100_000
+      )
+        return false;
       next.maxPlayers = opts.maxPlayers;
     }
     if (opts.isPublic !== undefined) {
       if (typeof opts.isPublic !== 'boolean') return false;
       next.isPublic = opts.isPublic;
     }
-    if (opts.description !== undefined) next.description = sanitizeUntrustedText(opts.description, 200);
+    if (opts.description !== undefined)
+      next.description = sanitizeUntrustedText(opts.description, 200);
     if (opts.serverNode !== undefined) {
       if (!isSafeServerNode(opts.serverNode) || opts.serverNode === 'custom') return false;
       next.serverNode = opts.serverNode;
@@ -3687,7 +4194,7 @@ export class WebRTCClient {
   async cleanup(): Promise<void> {
     try {
       console.log('🧹 开始清理 WebRTC 客户端...');
-      
+
       // 标记为主动断开，防止自动重连
       this.isIntentionalDisconnect = true;
 
@@ -3707,7 +4214,7 @@ export class WebRTCClient {
       } catch (error) {
         console.warn('停止聊天服务失败:', error);
       }
-      
+
       // 清理重连定时器
       if (this.reconnectTimeout) {
         clearTimeout(this.reconnectTimeout);
@@ -3717,9 +4224,9 @@ export class WebRTCClient {
         clearTimeout(this.websocketStableTimer);
         this.websocketStableTimer = null;
       }
-      
+
       // 清理所有peer重连状态
-      this.reconnectTimers.forEach(timer => clearTimeout(timer));
+      this.reconnectTimers.forEach((timer) => clearTimeout(timer));
       this.reconnectTimers.clear();
       if (this.voiceHealthInterval !== null) {
         clearInterval(this.voiceHealthInterval);
@@ -3740,14 +4247,14 @@ export class WebRTCClient {
       // 复位麦克风期望/实际状态，避免残留状态影响下次进入大厅
       this.desiredMicEnabled = false;
       this.micActuallyEnabled = false;
-      
+
       // 重置重连计数
       this.reconnectAttempts = 0;
-      
+
       // 停止心跳（先停止，避免在清理过程中发送消息）
       this.stopHeartbeat();
       console.log('✅ 心跳已停止');
-      
+
       // 停止 WebSocket 心跳
       this.stopWebSocketHeartbeat();
       console.log('✅ WebSocket 心跳已停止');
@@ -3762,11 +4269,11 @@ export class WebRTCClient {
             pc.audioElement.srcObject = null;
             console.log(`✅ 音频元素已清理 for ${peerId}`);
           }
-          
+
           // 关闭连接
           pc.connection.close();
           console.log(`✅ 连接已关闭 for ${peerId}`);
-          
+
           // 关闭数据通道
           if (pc.dataChannel) {
             pc.dataChannel.close();
@@ -3793,8 +4300,16 @@ export class WebRTCClient {
         this.rawMicStream.getTracks().forEach((t) => t.stop());
         this.rawMicStream = null;
       }
-      try { voiceChangerService.dispose(); } catch { /* ignore */ }
-      try { this.onLocalStreamCallback?.(null); } catch { /* ignore */ }
+      try {
+        voiceChangerService.dispose();
+      } catch {
+        /* ignore */
+      }
+      try {
+        this.onLocalStreamCallback?.(null);
+      } catch {
+        /* ignore */
+      }
 
       // 关闭 WebSocket 连接（最后关闭，确保所有清理消息都能发送）
       if (this.websocket) {
@@ -3803,20 +4318,22 @@ export class WebRTCClient {
         this.websocket.onmessage = null;
         this.websocket.onerror = null;
         this.websocket.onclose = null;
-        
+
         // 如果连接是打开状态，先发送离开消息
         if (this.websocket.readyState === WebSocket.OPEN) {
           try {
-            this.websocket.send(JSON.stringify({
-              type: 'leave',
-              clientId: this.localPlayerId,
-            }));
+            this.websocket.send(
+              JSON.stringify({
+                type: 'leave',
+                clientId: this.localPlayerId,
+              })
+            );
             console.log('📤 已发送离开消息');
           } catch (error) {
             console.warn('⚠️ 发送离开消息失败:', error);
           }
         }
-        
+
         // 关闭连接
         this.websocket.close();
         this.websocket = null;
@@ -3827,7 +4344,7 @@ export class WebRTCClient {
       this.localPlayerId = '';
       this.localPlayerName = '';
       this.virtualIp = null;
-      
+
       // 清理文件共享服务
       console.log('正在清理文件共享服务...');
       try {
@@ -3847,7 +4364,7 @@ export class WebRTCClient {
       } catch (error) {
         console.error('❌ 清理屏幕共享服务失败:', error);
       }
-      
+
       console.log('✅ WebRTC 客户端清理完成');
     } catch (error) {
       console.error('❌ 清理 WebRTC 客户端失败:', error);

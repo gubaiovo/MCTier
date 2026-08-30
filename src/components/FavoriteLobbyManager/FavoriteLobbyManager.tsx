@@ -3,7 +3,11 @@ import { Modal, Button, Form, Input, Space, App, Switch } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
-import { isSafeServerNode, isSafeSignalingServer, sanitizeUntrustedText } from '../../security/trustBoundary';
+import {
+  isSafeServerNode,
+  isSafeSignalingServer,
+  sanitizeUntrustedText,
+} from '../../security/trustBoundary';
 import './FavoriteLobbyManager.css';
 
 export interface FavoriteLobby {
@@ -29,6 +33,7 @@ interface FavoriteLobbyManagerProps {
 }
 
 const STORAGE_KEY = 'mctier_favorite_lobbies';
+const FAVORITES_PAGE_LOAD_TIME = Date.now();
 
 function normalizeFavorite(value: unknown): FavoriteLobby | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -37,21 +42,28 @@ function normalizeFavorite(value: unknown): FavoriteLobby | null {
   const id = sanitizeUntrustedText(item.id, 128).trim();
   if (!name || !id) return null;
   const playerName = sanitizeUntrustedText(item.playerName, 64).trim();
-  const serverNode = typeof item.serverNode === 'string' && isSafeServerNode(item.serverNode) && item.serverNode !== 'custom'
-    ? item.serverNode.trim()
-    : undefined;
-  const signalingServer = typeof item.signalingServer === 'string' && isSafeSignalingServer(item.signalingServer)
-    ? item.signalingServer.trim()
-    : undefined;
-  const createdAt = typeof item.createdAt === 'number' && Number.isFinite(item.createdAt)
-    ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.createdAt)))
-    : Date.now();
-  const useCount = typeof item.useCount === 'number' && Number.isFinite(item.useCount)
-    ? Math.max(0, Math.min(1_000_000, Math.trunc(item.useCount)))
-    : 0;
-  const lastUsedAt = typeof item.lastUsedAt === 'number' && Number.isFinite(item.lastUsedAt)
-    ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.lastUsedAt)))
-    : undefined;
+  const serverNode =
+    typeof item.serverNode === 'string' &&
+    isSafeServerNode(item.serverNode) &&
+    item.serverNode !== 'custom'
+      ? item.serverNode.trim()
+      : undefined;
+  const signalingServer =
+    typeof item.signalingServer === 'string' && isSafeSignalingServer(item.signalingServer)
+      ? item.signalingServer.trim()
+      : undefined;
+  const createdAt =
+    typeof item.createdAt === 'number' && Number.isFinite(item.createdAt)
+      ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.createdAt)))
+      : Date.now();
+  const useCount =
+    typeof item.useCount === 'number' && Number.isFinite(item.useCount)
+      ? Math.max(0, Math.min(1_000_000, Math.trunc(item.useCount)))
+      : 0;
+  const lastUsedAt =
+    typeof item.lastUsedAt === 'number' && Number.isFinite(item.lastUsedAt)
+      ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.lastUsedAt)))
+      : undefined;
   return {
     id,
     name,
@@ -130,16 +142,16 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
   const handleSaveFavorite = async () => {
     try {
       const values = await form.validateFields();
-      
+
       if (editingFavorite) {
         // 编辑现有项
-        const updated = favorites.map(fav =>
+        const updated = favorites.map((fav) =>
           fav.id === editingFavorite.id
-          ? {
-                ...fav, 
-                name: values.name, 
+            ? {
+                ...fav,
+                name: values.name,
                 playerName: values.playerName,
-                useDomain: values.useDomain ?? false
+                useDomain: values.useDomain ?? false,
               }
             : fav
         );
@@ -159,7 +171,7 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
         saveFavorites([...favorites, newFavorite]);
         message.success(tl('添加成功', 'Added'));
       }
-      
+
       form.resetFields();
       setEditingFavorite(null);
       setShowAddForm(false);
@@ -170,14 +182,14 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
 
   // 删除常用大厅
   const handleDeleteFavorite = (id: string) => {
-    const updated = favorites.filter(fav => fav.id !== id);
+    const updated = favorites.filter((fav) => fav.id !== id);
     saveFavorites(updated);
     message.success(tl('删除成功', 'Deleted'));
   };
 
   // 选择常用大厅（记录使用次数与时间，便于按最近使用排序）
   const handleSelectFavorite = (lobby: FavoriteLobby) => {
-    const updated = favorites.map(fav =>
+    const updated = favorites.map((fav) =>
       fav.id === lobby.id
         ? { ...fav, useCount: (fav.useCount ?? 0) + 1, lastUsedAt: Date.now() }
         : fav
@@ -198,7 +210,7 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
 
   const fmtLastUsed = (ts?: number): string => {
     if (!ts) return tl('从未使用', 'Never used');
-    const diff = Date.now() - ts;
+    const diff = FAVORITES_PAGE_LOAD_TIME - ts;
     const min = Math.floor(diff / 60000);
     if (min < 1) return tl('刚刚使用', 'Just now');
     if (min < 60) return tl(`${min} 分钟前`, `${min}m ago`);
@@ -253,15 +265,25 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
                   name="name"
                   rules={[
                     { required: true, message: tl('请输入大厅名称', 'Enter a lobby name') },
-                    { min: 4, max: 32, message: tl('大厅名称长度为 4-32 个字符', 'Lobby name must be 4-32 characters') },
+                    {
+                      min: 4,
+                      max: 32,
+                      message: tl(
+                        '大厅名称长度为 4-32 个字符',
+                        'Lobby name must be 4-32 characters'
+                      ),
+                    },
                     {
                       pattern: /^[\u4e00-\u9fa5a-zA-Z0-9_\-\s]+$/,
-                      message: tl('大厅名称只能包含中文、字母、数字、下划线、连字符和空格', 'Lobby name may only contain letters, digits, underscore, hyphen and spaces'),
+                      message: tl(
+                        '大厅名称只能包含中文、字母、数字、下划线、连字符和空格',
+                        'Lobby name may only contain letters, digits, underscore, hyphen and spaces'
+                      ),
                     },
                   ]}
                 >
-                  <Input 
-                    placeholder={tl('输入大厅名称', 'Enter lobby name')} 
+                  <Input
+                    placeholder={tl('输入大厅名称', 'Enter lobby name')}
                     onChange={(e) => {
                       const value = e.target.value;
                       const filtered = value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9_\-\s]/g, '');
@@ -276,8 +298,15 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
                   name="playerName"
                   rules={[
                     { required: true, message: tl('请输入玩家名称', 'Enter a player name') },
-                    { whitespace: true, message: tl('玩家名称不能为空白字符', 'Player name cannot be blank') },
-                    { min: 1, max: 8, message: tl('玩家名称长度为 1-8 个字', 'Player name must be 1-8 characters') },
+                    {
+                      whitespace: true,
+                      message: tl('玩家名称不能为空白字符', 'Player name cannot be blank'),
+                    },
+                    {
+                      min: 1,
+                      max: 8,
+                      message: tl('玩家名称长度为 1-8 个字', 'Player name must be 1-8 characters'),
+                    },
                   ]}
                 >
                   <Input placeholder={tl('输入玩家名称', 'Enter player name')} maxLength={8} />
@@ -322,7 +351,10 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
           <div className="empty-state">
             <p>{tl('暂无常用大厅', 'No favorite lobbies')}</p>
             <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
-              {tl('点击上方按钮添加常用的大厅信息', 'Click the button above to add a favorite lobby')}
+              {tl(
+                '点击上方按钮添加常用的大厅信息',
+                'Click the button above to add a favorite lobby'
+              )}
             </p>
           </div>
         ) : (
@@ -333,69 +365,108 @@ export const FavoriteLobbyManager: React.FC<FavoriteLobbyManagerProps> = ({
                 className="favorite-card"
                 onClick={() => handleSelectFavorite(item)}
               >
-                  <div className="favorite-card-content">
-                    <div className="favorite-card-header">
-                      <div className="favorite-card-icon">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                          <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                        </svg>
-                      </div>
-                      <div className="favorite-card-title">{item.name}</div>
-                    </div>
-                    <div className="favorite-card-password">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                <div className="favorite-card-content">
+                  <div className="favorite-card-header">
+                    <div className="favorite-card-icon">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
                       </svg>
-                      <span>{tl('加入时需要重新输入密码', 'Password required when joining')}</span>
                     </div>
-                    <div className="favorite-card-meta" style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 4, display: 'flex', gap: 12 }}>
-                      <span>{tl('使用', 'Used')} {item.useCount ?? 0} {tl('次', 'x')}</span>
-                      <span>{fmtLastUsed(item.lastUsedAt)}</span>
-                    </div>
+                    <div className="favorite-card-title">{item.name}</div>
                   </div>
-                  <div className="favorite-card-actions" onClick={(e) => e.stopPropagation()}>
-                    <motion.button
-                      className="favorite-action-btn edit-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartEdit(item);
-                      }}
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      title={tl('编辑', 'Edit')}
+                  <div className="favorite-card-password">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                      </svg>
-                    </motion.button>
-                    <motion.button
-                      className="favorite-action-btn delete-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        modal.confirm({
-                          title: tl('确定删除这个常用大厅吗？', 'Delete this favorite lobby?'),
-                          okText: tl('确定', 'OK'),
-                          cancelText: tl('取消', 'Cancel'),
-                          okButtonProps: { danger: true },
-                          centered: true,
-                          onOk: () => handleDeleteFavorite(item.id),
-                        });
-                      }}
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      title={tl('删除', 'Delete')}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                    </motion.button>
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <span>{tl('加入时需要重新输入密码', 'Password required when joining')}</span>
+                  </div>
+                  <div
+                    className="favorite-card-meta"
+                    style={{
+                      fontSize: 11,
+                      color: 'rgba(255,255,255,0.45)',
+                      marginTop: 4,
+                      display: 'flex',
+                      gap: 12,
+                    }}
+                  >
+                    <span>
+                      {tl('使用', 'Used')} {item.useCount ?? 0} {tl('次', 'x')}
+                    </span>
+                    <span>{fmtLastUsed(item.lastUsedAt)}</span>
                   </div>
                 </div>
-              ))}
+                <div className="favorite-card-actions" onClick={(e) => e.stopPropagation()}>
+                  <motion.button
+                    className="favorite-action-btn edit-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartEdit(item);
+                    }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title={tl('编辑', 'Edit')}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </motion.button>
+                  <motion.button
+                    className="favorite-action-btn delete-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      modal.confirm({
+                        title: tl('确定删除这个常用大厅吗？', 'Delete this favorite lobby?'),
+                        okText: tl('确定', 'OK'),
+                        cancelText: tl('取消', 'Cancel'),
+                        okButtonProps: { danger: true },
+                        centered: true,
+                        onOk: () => handleDeleteFavorite(item.id),
+                      });
+                    }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title={tl('删除', 'Delete')}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </motion.button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

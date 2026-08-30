@@ -122,7 +122,12 @@ export const statsService = {
         if (dur > s.maxSessionMs) s.maxSessionMs = dur;
         // 记录一场开黑（仅记录时长 >= 30 秒的有效会话，避免误触刷屏）
         if (dur >= 30000) {
-          const rec: SessionRecord = { start: s.sessionStart, end: now, durationMs: dur, isHost: !!s.sessionIsHost };
+          const rec: SessionRecord = {
+            start: s.sessionStart,
+            end: now,
+            durationMs: dur,
+            isHost: !!s.sessionIsHost,
+          };
           s.sessions = [rec, ...(s.sessions ?? [])].slice(0, 50);
         }
       }
@@ -138,7 +143,8 @@ export const statsService = {
     const partners: PartnerStat[] = partnersRaw
       .map((p) => ({ name: p.name, count: p.count, lastSeen: p.lastSeen }))
       .sort((a, b) => b.count - a.count);
-    const usedDays = s.firstUseTs > 0 ? Math.max(1, Math.ceil((Date.now() - s.firstUseTs) / 86400000)) : 0;
+    const usedDays =
+      s.firstUseTs > 0 ? Math.max(1, Math.ceil((Date.now() - s.firstUseTs) / 86400000)) : 0;
     const avgSessionMs = s.joinCount > 0 ? Math.round(s.totalOnlineMs / s.joinCount) : 0;
     let mostActiveBucket = -1;
     let maxB = 0;

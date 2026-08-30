@@ -28,11 +28,7 @@ export const VolumeIcon: React.FC<VolumeIconProps> = ({
         xmlns="http://www.w3.org/2000/svg"
         className={className}
       >
-        <path
-          d="M3 9V15H7L12 20V4L7 9H3Z"
-          fill="currentColor"
-          opacity="0.4"
-        />
+        <path d="M3 9V15H7L12 20V4L7 9H3Z" fill="currentColor" opacity="0.4" />
         <line
           x1="16"
           y1="9"
@@ -64,10 +60,7 @@ export const VolumeIcon: React.FC<VolumeIconProps> = ({
         xmlns="http://www.w3.org/2000/svg"
         className={className}
       >
-        <path
-          d="M3 9V15H7L12 20V4L7 9H3Z"
-          fill="currentColor"
-        />
+        <path d="M3 9V15H7L12 20V4L7 9H3Z" fill="currentColor" />
         <path
           d="M16.5 12C16.5 10.23 15.48 8.71 14 7.97V16.02C15.48 15.29 16.5 13.77 16.5 12Z"
           fill="currentColor"

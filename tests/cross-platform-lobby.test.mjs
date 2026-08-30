@@ -51,7 +51,7 @@ test('desktop waits for an authoritative signaling registration result', () => {
   assert.match(connectBlock, /message\.type === 'register-success'/);
   assert.match(connectBlock, /acceptRegistration\(\)/);
   assert.match(connectBlock, /message\.type === 'register-error'/);
-  assert.match(connectBlock, /rejectRegistration\(new SignalingRegistrationError/);
+  assert.match(connectBlock, /rejectRegistration\(\s*new SignalingRegistrationError/);
 
   const openHandler =
     connectBlock.match(/this\.websocket\.onopen = \(\) => \{([\s\S]*?)\n\s*\};/)?.[1] ?? '';

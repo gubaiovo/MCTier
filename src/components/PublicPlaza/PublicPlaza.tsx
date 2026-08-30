@@ -21,7 +21,12 @@ interface PublicPlazaProps {
   signalingServer?: string;
 }
 
-export const PublicPlaza: React.FC<PublicPlazaProps> = ({ visible, onClose, onJoin, signalingServer }) => {
+export const PublicPlaza: React.FC<PublicPlazaProps> = ({
+  visible,
+  onClose,
+  onJoin,
+  signalingServer,
+}) => {
   useTranslation();
   const [loading, setLoading] = useState(false);
   const [lobbies, setLobbies] = useState<PublicLobby[]>([]);
@@ -49,18 +54,37 @@ export const PublicPlaza: React.FC<PublicPlazaProps> = ({ visible, onClose, onJo
       open={visible}
       onCancel={onClose}
       footer={[
-        <Button key="refresh" onClick={() => void refresh()} loading={loading}>{tl('刷新', 'Refresh')}</Button>,
-        <Button key="close" type="primary" onClick={onClose}>{tl('关闭', 'Close')}</Button>,
+        <Button key="refresh" onClick={() => void refresh()} loading={loading}>
+          {tl('刷新', 'Refresh')}
+        </Button>,
+        <Button key="close" type="primary" onClick={onClose}>
+          {tl('关闭', 'Close')}
+        </Button>,
       ]}
       width={520}
       centered
     >
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <Spin />
+        </div>
       ) : lobbies.length === 0 ? (
-        <Empty description={tl('暂无公开大厅，邀请房主在「房主管理」中发布吧', 'No public lobbies — ask a host to publish in "Host Management"')} />
+        <Empty
+          description={tl(
+            '暂无公开大厅，邀请房主在「房主管理」中发布吧',
+            'No public lobbies — ask a host to publish in "Host Management"'
+          )}
+        />
       ) : (
-        <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div
+          style={{
+            maxHeight: 380,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
           {lobbies.map((l, i) => {
             const full = !!l.maxPlayers && l.playerCount >= l.maxPlayers;
             return (
@@ -80,7 +104,8 @@ export const PublicPlaza: React.FC<PublicPlazaProps> = ({ visible, onClose, onJo
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {l.lobbyName}
                     <Tag color={full ? 'red' : 'green'}>
-                      {l.playerCount}{l.maxPlayers ? `/${l.maxPlayers}` : ''} {tl('人', 'players')}
+                      {l.playerCount}
+                      {l.maxPlayers ? `/${l.maxPlayers}` : ''} {tl('人', 'players')}
                     </Tag>
                   </div>
                   <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
@@ -92,14 +117,22 @@ export const PublicPlaza: React.FC<PublicPlazaProps> = ({ visible, onClose, onJo
                   type="primary"
                   size="small"
                   disabled={full}
-                  onClick={() => { onJoin(l); onClose(); }}
+                  onClick={() => {
+                    onJoin(l);
+                    onClose();
+                  }}
                 >
                   {full ? tl('已满', 'Full') : tl('加入', 'Join')}
                 </Button>
               </div>
             );
           })}
-          <Text type="secondary" style={{ fontSize: 12 }}>{tl('提示：公开大厅由房主主动公开，加入即进入对应虚拟局域网。', 'Tip: public lobbies are opened by hosts; joining enters their virtual LAN.')}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {tl(
+              '提示：公开大厅由房主主动公开，加入即进入对应虚拟局域网。',
+              'Tip: public lobbies are opened by hosts; joining enters their virtual LAN.'
+            )}
+          </Text>
         </div>
       )}
     </Modal>

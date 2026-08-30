@@ -8,7 +8,11 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { isSafeIdentifier, isSafeSessionId, sanitizeUntrustedText } from '../../security/trustBoundary';
+import {
+  isSafeIdentifier,
+  isSafeSessionId,
+  sanitizeUntrustedText,
+} from '../../security/trustBoundary';
 
 export type RemoteInputEvent =
   | { kind: 'move'; x: number; y: number }
@@ -40,14 +44,15 @@ class RemoteControlService {
 
   private role: Role = 'idle';
   private sessionId = '';
-  private peerId = '';        // 对端 playerId
+  private peerId = ''; // 对端 playerId
   private peerName = '';
   private pc: RTCPeerConnection | null = null;
   private inputChannel: RTCDataChannel | null = null;
   private localStream: MediaStream | null = null;
   private pendingInput: RemoteInputEvent[] = [];
   private flushTimer: number | null = null;
-  private pendingIce: Array<{ sessionId: string; peerId: string; candidate: RTCIceCandidateInit }> = [];
+  private pendingIce: Array<{ sessionId: string; peerId: string; candidate: RTCIceCandidateInit }> =
+    [];
   private requestTimer: number | null = null;
   private pendingRequest: PendingControlRequest | null = null;
 
@@ -91,11 +96,17 @@ class RemoteControlService {
     return this.isCurrentPeerSession(sessionId, from) && to === this.playerId;
   }
 
-  private isCurrentPeerSession(sessionId: string, peerId: string, pc?: RTCPeerConnection | null): boolean {
-    return this.role !== 'idle'
-      && sessionId === this.sessionId
-      && peerId === this.peerId
-      && (pc === undefined || this.pc === pc);
+  private isCurrentPeerSession(
+    sessionId: string,
+    peerId: string,
+    pc?: RTCPeerConnection | null
+  ): boolean {
+    return (
+      this.role !== 'idle' &&
+      sessionId === this.sessionId &&
+      peerId === this.peerId &&
+      (pc === undefined || this.pc === pc)
+    );
   }
 
   // ==================== 控制端：发起请求 ====================
@@ -135,14 +146,27 @@ class RemoteControlService {
   }
 
   // ==================== 被控端：接受/拒绝 ====================
-  async acceptControl(sessionId: string, controllerId: string, controllerName: string): Promise<void> {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(controllerId) || controllerId === this.playerId) {
+  async acceptControl(
+    sessionId: string,
+    controllerId: string,
+    controllerName: string
+  ): Promise<void> {
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(controllerId) ||
+      controllerId === this.playerId
+    ) {
       throw new Error('远程控制会话无效');
     }
     const safeControllerName = sanitizeUntrustedText(controllerName, 64).trim();
     if (!safeControllerName) throw new Error('远程控制者名称无效');
     const pending = this.pendingRequest;
-    if (!pending || pending.sessionId !== sessionId || pending.from !== controllerId || this.role !== 'idle') {
+    if (
+      !pending ||
+      pending.sessionId !== sessionId ||
+      pending.from !== controllerId ||
+      this.role !== 'idle'
+    ) {
       throw new Error('远程控制请求已失效');
     }
     this.role = 'controlled';
@@ -171,7 +195,8 @@ class RemoteControlService {
       if (vt) {
         vt.contentHint = 'motion';
         vt.onended = () => {
-          if (this.isCurrentPeerSession(sessionId, controllerId) && this.localStream === stream) this.stopControl();
+          if (this.isCurrentPeerSession(sessionId, controllerId) && this.localStream === stream)
+            this.stopControl();
         };
       }
       this.send({
@@ -192,14 +217,21 @@ class RemoteControlService {
           sessionId,
           reason: 'capture-failed',
         });
-      } catch { /* ignore signaling teardown races */ }
+      } catch {
+        /* ignore signaling teardown races */
+      }
       this.cleanup();
       throw error;
     }
   }
 
   rejectControl(sessionId: string, controllerId: string): void {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(controllerId) || controllerId === this.playerId) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(controllerId) ||
+      controllerId === this.playerId
+    )
+      return;
     const pending = this.pendingRequest;
     if (!pending || pending.sessionId !== sessionId || pending.from !== controllerId) return;
     this.send({
@@ -239,7 +271,12 @@ class RemoteControlService {
     this.pendingIce = [];
     this.pendingRequest = null;
     if (this.inputChannel) {
-      try { this.inputChannel.onmessage = null; this.inputChannel.close(); } catch { /* ignore */ }
+      try {
+        this.inputChannel.onmessage = null;
+        this.inputChannel.close();
+      } catch {
+        /* ignore */
+      }
       this.inputChannel = null;
     }
     if (this.pc) {
@@ -249,7 +286,9 @@ class RemoteControlService {
         this.pc.ondatachannel = null;
         this.pc.onconnectionstatechange = null;
         this.pc.close();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       this.pc = null;
     }
     if (this.localStream) {
@@ -266,29 +305,61 @@ class RemoteControlService {
 
   /** 被控端收到控制请求 */
   handleRequest(sessionId: string, from: string, fromName: string, to: string): void {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId
+    )
+      return;
     const safeFromName = sanitizeUntrustedText(fromName, 64).trim();
     if (!safeFromName) return;
     if (this.role !== 'idle') {
       // 忙：自动拒绝
-      this.send({ type: 'remote-control-reject', from: this.playerId, to: from, sessionId, reason: 'busy' });
+      this.send({
+        type: 'remote-control-reject',
+        from: this.playerId,
+        to: from,
+        sessionId,
+        reason: 'busy',
+      });
       return;
     }
     if (this.pendingRequest) {
-      this.send({ type: 'remote-control-reject', from: this.playerId, to: from, sessionId, reason: 'busy' });
+      this.send({
+        type: 'remote-control-reject',
+        from: this.playerId,
+        to: from,
+        sessionId,
+        reason: 'busy',
+      });
       return;
     }
     this.pendingRequest = { sessionId, from, fromName: safeFromName };
-    window.dispatchEvent(new CustomEvent('rc-incoming-request', { detail: { sessionId, from, fromName: safeFromName } }));
+    window.dispatchEvent(
+      new CustomEvent('rc-incoming-request', {
+        detail: { sessionId, from, fromName: safeFromName },
+      })
+    );
   }
 
   /** 控制端收到被控端接受 -> 建立连接并发 offer */
   async handleAccept(sessionId: string, from: string, to: string): Promise<void> {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId) return;
-    if (this.role !== 'controller' || !this.isCurrentPeerMessage(sessionId, from, to) || this.pc) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId
+    )
+      return;
+    if (this.role !== 'controller' || !this.isCurrentPeerMessage(sessionId, from, to) || this.pc)
+      return;
     const expectedSessionId = sessionId;
     const expectedPeerId = from;
-    if (this.requestTimer !== null) { clearTimeout(this.requestTimer); this.requestTimer = null; }
+    if (this.requestTimer !== null) {
+      clearTimeout(this.requestTimer);
+      this.requestTimer = null;
+    }
     const pc = new RTCPeerConnection(RTC_CONFIG);
     this.pc = pc;
 
@@ -298,8 +369,16 @@ class RemoteControlService {
 
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.ontrack = (e) => {
-      if (this.isCurrentPeerSession(expectedSessionId, expectedPeerId, pc) && e.streams && e.streams[0]) {
-        window.dispatchEvent(new CustomEvent('rc-stream', { detail: { stream: e.streams[0], peerName: this.peerName } }));
+      if (
+        this.isCurrentPeerSession(expectedSessionId, expectedPeerId, pc) &&
+        e.streams &&
+        e.streams[0]
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('rc-stream', {
+            detail: { stream: e.streams[0], peerName: this.peerName },
+          })
+        );
       }
     };
     pc.onicecandidate = (e) => {
@@ -307,7 +386,8 @@ class RemoteControlService {
     };
     pc.onconnectionstatechange = () => {
       if (!this.isCurrentPeerSession(expectedSessionId, expectedPeerId, pc)) return;
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.stopControl(false);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed')
+        this.stopControl(false);
     };
 
     try {
@@ -323,7 +403,9 @@ class RemoteControlService {
       }
       this.send({
         type: 'remote-control-offer',
-        from: this.playerId, to: expectedPeerId, sessionId: expectedSessionId,
+        from: this.playerId,
+        to: expectedPeerId,
+        sessionId: expectedSessionId,
         offer: { type: offer.type, sdp: offer.sdp },
       });
     } catch (error) {
@@ -334,16 +416,29 @@ class RemoteControlService {
 
   /** 被控端收到 offer -> 加屏幕轨、建数据通道、应答 */
   async handleOffer(sessionId: string, from: string, to: string, sdp: string): Promise<void> {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId ||
-        typeof sdp !== 'string' || sdp.length === 0 || sdp.length > 256 * 1024 ||
-        this.role !== 'controlled' || !this.isCurrentPeerMessage(sessionId, from, to) || this.pc) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId ||
+      typeof sdp !== 'string' ||
+      sdp.length === 0 ||
+      sdp.length > 256 * 1024 ||
+      this.role !== 'controlled' ||
+      !this.isCurrentPeerMessage(sessionId, from, to) ||
+      this.pc
+    )
+      return;
     const expectedSessionId = sessionId;
     const expectedPeerId = from;
     try {
       let stream = this.localStream;
       if (!stream) {
         // 兜底：理论上 acceptControl 已采集
-        const capturedStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false } as any);
+        const capturedStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        } as any);
         if (!this.isCurrentPeerSession(expectedSessionId, expectedPeerId)) {
           capturedStream.getTracks().forEach((track) => track.stop());
           return;
@@ -356,9 +451,13 @@ class RemoteControlService {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream!));
 
       pc.ondatachannel = (e) => {
-        if (e.channel.label === 'rc-input' && this.isCurrentPeerSession(expectedSessionId, expectedPeerId, pc)) {
+        if (
+          e.channel.label === 'rc-input' &&
+          this.isCurrentPeerSession(expectedSessionId, expectedPeerId, pc)
+        ) {
           this.inputChannel = e.channel;
-          e.channel.onmessage = (ev) => this.onInputMessage(ev.data, expectedSessionId, expectedPeerId, pc, e.channel);
+          e.channel.onmessage = (ev) =>
+            this.onInputMessage(ev.data, expectedSessionId, expectedPeerId, pc, e.channel);
         } else {
           e.channel.close();
         }
@@ -368,7 +467,8 @@ class RemoteControlService {
       };
       pc.onconnectionstatechange = () => {
         if (!this.isCurrentPeerSession(expectedSessionId, expectedPeerId, pc)) return;
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.stopControl(false);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed')
+          this.stopControl(false);
       };
 
       await pc.setRemoteDescription({ type: 'offer', sdp });
@@ -389,10 +489,14 @@ class RemoteControlService {
       }
       this.send({
         type: 'remote-control-answer',
-        from: this.playerId, to: expectedPeerId, sessionId: expectedSessionId,
+        from: this.playerId,
+        to: expectedPeerId,
+        sessionId: expectedSessionId,
         answer: { type: answer.type, sdp: answer.sdp },
       });
-      window.dispatchEvent(new CustomEvent('rc-controlled-active', { detail: { peerName: this.peerName } }));
+      window.dispatchEvent(
+        new CustomEvent('rc-controlled-active', { detail: { peerName: this.peerName } })
+      );
     } catch (error) {
       if (this.isCurrentPeerSession(expectedSessionId, expectedPeerId)) this.stopControl(false);
       throw error;
@@ -401,11 +505,22 @@ class RemoteControlService {
 
   /** 控制端收到 answer */
   async handleAnswer(sessionId: string, from: string, to: string, sdp: string): Promise<void> {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId ||
-        typeof sdp !== 'string' || sdp.length === 0 || sdp.length > 256 * 1024 ||
-        this.role !== 'controller' || !this.isCurrentPeerMessage(sessionId, from, to) || !this.pc) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId ||
+      typeof sdp !== 'string' ||
+      sdp.length === 0 ||
+      sdp.length > 256 * 1024 ||
+      this.role !== 'controller' ||
+      !this.isCurrentPeerMessage(sessionId, from, to) ||
+      !this.pc
+    )
+      return;
     const pc = this.pc;
-    if (pc.signalingState !== 'have-local-offer' || !this.isCurrentPeerSession(sessionId, from, pc)) return;
+    if (pc.signalingState !== 'have-local-offer' || !this.isCurrentPeerSession(sessionId, from, pc))
+      return;
     try {
       await pc.setRemoteDescription({ type: 'answer', sdp });
       if (!this.isCurrentPeerSession(sessionId, from, pc)) return;
@@ -417,15 +532,31 @@ class RemoteControlService {
   }
 
   /** 双方：收到对端 ICE */
-  async handleIce(sessionId: string, from: string, to: string, candidate: RTCIceCandidateInit): Promise<void> {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId ||
-        !candidate || typeof candidate.candidate !== 'string' || candidate.candidate.length === 0 ||
-        candidate.candidate.length > 16 * 1024 ||
-        (candidate.sdpMLineIndex != null &&
-          (typeof candidate.sdpMLineIndex !== 'number' || !Number.isSafeInteger(candidate.sdpMLineIndex) ||
-            candidate.sdpMLineIndex < 0 || candidate.sdpMLineIndex > 256)) ||
-        (candidate.sdpMid != null && (typeof candidate.sdpMid !== 'string' || candidate.sdpMid.length > 128)) ||
-        !this.isCurrentPeerMessage(sessionId, from, to)) return;
+  async handleIce(
+    sessionId: string,
+    from: string,
+    to: string,
+    candidate: RTCIceCandidateInit
+  ): Promise<void> {
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId ||
+      !candidate ||
+      typeof candidate.candidate !== 'string' ||
+      candidate.candidate.length === 0 ||
+      candidate.candidate.length > 16 * 1024 ||
+      (candidate.sdpMLineIndex != null &&
+        (typeof candidate.sdpMLineIndex !== 'number' ||
+          !Number.isSafeInteger(candidate.sdpMLineIndex) ||
+          candidate.sdpMLineIndex < 0 ||
+          candidate.sdpMLineIndex > 256)) ||
+      (candidate.sdpMid != null &&
+        (typeof candidate.sdpMid !== 'string' || candidate.sdpMid.length > 128)) ||
+      !this.isCurrentPeerMessage(sessionId, from, to)
+    )
+      return;
     if (this.pendingIce.length >= 256) return;
     const pc = this.pc;
     if (!pc || !pc.remoteDescription) {
@@ -447,18 +578,36 @@ class RemoteControlService {
   }
 
   handleReject(sessionId: string, from: string, to: string, reason: string): void {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId ||
-        this.role !== 'controller' || !this.isCurrentPeerMessage(sessionId, from, to)) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId ||
+      this.role !== 'controller' ||
+      !this.isCurrentPeerMessage(sessionId, from, to)
+    )
+      return;
     const safeReason = sanitizeUntrustedText(reason, 200).trim();
     this.finishReject(safeReason || 'rejected');
   }
 
   /** 对端停止 */
   handleStop(sessionId: string, from: string, to: string): void {
-    if (!isSafeSessionId(sessionId) || !isSafeIdentifier(from) || from === this.playerId || to !== this.playerId) return;
+    if (
+      !isSafeSessionId(sessionId) ||
+      !isSafeIdentifier(from) ||
+      from === this.playerId ||
+      to !== this.playerId
+    )
+      return;
     if (this.role === 'idle') {
       const pending = this.pendingRequest;
-      if (pending && pending.sessionId === sessionId && pending.from === from && to === this.playerId) {
+      if (
+        pending &&
+        pending.sessionId === sessionId &&
+        pending.from === from &&
+        to === this.playerId
+      ) {
         this.pendingRequest = null;
         window.dispatchEvent(new CustomEvent('rc-ended', { detail: { reason: 'peer-stopped' } }));
       }
@@ -469,10 +618,18 @@ class RemoteControlService {
     window.dispatchEvent(new CustomEvent('rc-ended', { detail: {} }));
   }
 
-  private async flushPendingIce(sessionId: string, peerId: string, pc: RTCPeerConnection): Promise<void> {
+  private async flushPendingIce(
+    sessionId: string,
+    peerId: string,
+    pc: RTCPeerConnection
+  ): Promise<void> {
     if (!pc.remoteDescription || !this.isCurrentPeerSession(sessionId, peerId, pc)) return;
-    const list = this.pendingIce.filter((item) => item.sessionId === sessionId && item.peerId === peerId);
-    this.pendingIce = this.pendingIce.filter((item) => item.sessionId !== sessionId || item.peerId !== peerId);
+    const list = this.pendingIce.filter(
+      (item) => item.sessionId === sessionId && item.peerId === peerId
+    );
+    this.pendingIce = this.pendingIce.filter(
+      (item) => item.sessionId !== sessionId || item.peerId !== peerId
+    );
     for (const item of list) {
       if (!this.isCurrentPeerSession(sessionId, peerId, pc)) return;
       try {
@@ -483,12 +640,23 @@ class RemoteControlService {
     }
   }
 
-  private sendIce(sessionId: string, peerId: string, pc: RTCPeerConnection, candidate: RTCIceCandidate): void {
+  private sendIce(
+    sessionId: string,
+    peerId: string,
+    pc: RTCPeerConnection,
+    candidate: RTCIceCandidate
+  ): void {
     if (!this.isCurrentPeerSession(sessionId, peerId, pc)) return;
     this.send({
       type: 'remote-control-ice',
-      from: this.playerId, to: peerId, sessionId,
-      candidate: { candidate: candidate.candidate, sdpMLineIndex: candidate.sdpMLineIndex, sdpMid: candidate.sdpMid },
+      from: this.playerId,
+      to: peerId,
+      sessionId,
+      candidate: {
+        candidate: candidate.candidate,
+        sdpMLineIndex: candidate.sdpMLineIndex,
+        sdpMid: candidate.sdpMid,
+      },
     });
   }
 
@@ -498,10 +666,24 @@ class RemoteControlService {
     this.pendingInput.push(ev);
   }
 
-  private startFlush(sessionId: string, peerId: string, pc: RTCPeerConnection, channel: RTCDataChannel): void {
-    if (!this.isCurrentPeerSession(sessionId, peerId, pc) || this.inputChannel !== channel || this.flushTimer !== null) return;
+  private startFlush(
+    sessionId: string,
+    peerId: string,
+    pc: RTCPeerConnection,
+    channel: RTCDataChannel
+  ): void {
+    if (
+      !this.isCurrentPeerSession(sessionId, peerId, pc) ||
+      this.inputChannel !== channel ||
+      this.flushTimer !== null
+    )
+      return;
     const timer = window.setInterval(() => {
-      if (!this.isCurrentPeerSession(sessionId, peerId, pc) || this.inputChannel !== channel || channel.readyState !== 'open') {
+      if (
+        !this.isCurrentPeerSession(sessionId, peerId, pc) ||
+        this.inputChannel !== channel ||
+        channel.readyState !== 'open'
+      ) {
         if (this.flushTimer === timer) {
           clearInterval(timer);
           this.flushTimer = null;
@@ -511,7 +693,11 @@ class RemoteControlService {
       if (this.pendingInput.length === 0) return;
       const batch = this.pendingInput;
       this.pendingInput = [];
-      try { channel.send(JSON.stringify(batch)); } catch { /* ignore */ }
+      try {
+        channel.send(JSON.stringify(batch));
+      } catch {
+        /* ignore */
+      }
     }, 16);
     this.flushTimer = timer;
   }
@@ -521,12 +707,22 @@ class RemoteControlService {
     sessionId: string,
     peerId: string,
     pc: RTCPeerConnection,
-    channel: RTCDataChannel,
+    channel: RTCDataChannel
   ): Promise<void> {
-    if (this.role !== 'controlled' || this.inputChannel !== channel || channel.readyState !== 'open' || !this.isCurrentPeerSession(sessionId, peerId, pc)) return;
+    if (
+      this.role !== 'controlled' ||
+      this.inputChannel !== channel ||
+      channel.readyState !== 'open' ||
+      !this.isCurrentPeerSession(sessionId, peerId, pc)
+    )
+      return;
     try {
       const events = JSON.parse(typeof data === 'string' ? data : String(data));
-      if (Array.isArray(events) && events.length && this.isCurrentPeerSession(sessionId, peerId, pc)) {
+      if (
+        Array.isArray(events) &&
+        events.length &&
+        this.isCurrentPeerSession(sessionId, peerId, pc)
+      ) {
         await invoke('remote_inject_input', { events });
       }
     } catch (e) {
@@ -544,13 +740,16 @@ class RemoteControlService {
       this.cleanup();
       ended = true;
     }
-    if (ended) window.dispatchEvent(new CustomEvent('rc-ended', { detail: { reason: 'peer-left' } }));
+    if (ended)
+      window.dispatchEvent(new CustomEvent('rc-ended', { detail: { reason: 'peer-left' } }));
   }
 
   handleSignalingDisconnected(): void {
     if (this.role === 'idle' && !this.pendingRequest) return;
     this.cleanup();
-    window.dispatchEvent(new CustomEvent('rc-ended', { detail: { reason: 'signaling-disconnected' } }));
+    window.dispatchEvent(
+      new CustomEvent('rc-ended', { detail: { reason: 'signaling-disconnected' } })
+    );
   }
 }
 

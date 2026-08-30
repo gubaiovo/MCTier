@@ -37,18 +37,23 @@ export const AdvancedNetworkConfig: React.FC<AdvancedNetworkConfigProps> = ({
       >
         <div className="section-header">
           <h4>{tl('虚拟域名', 'Virtual Domain')}</h4>
-          <Tooltip title={tl('为虚拟网络配置自定义域名', 'Configure a custom domain for the virtual network')}>
+          <Tooltip
+            title={tl(
+              '为虚拟网络配置自定义域名',
+              'Configure a custom domain for the virtual network'
+            )}
+          >
             <QuestionCircleOutlined />
           </Tooltip>
         </div>
-        
+
         <Input
           placeholder={tl('例如: mctier.local', 'e.g. mctier.local')}
           value={virtualDomain}
           onChange={(e) => handleVirtualDomainChange(e.target.value)}
           maxLength={50}
         />
-        
+
         {virtualDomain && (
           <div className="domain-preview">
             <span className="preview-label">{tl('预览:', 'Preview:')}</span>

@@ -43,7 +43,10 @@ export function sanitizeIdentifier(value: unknown, maxLength = 128): string {
  * addressed. `sanitizeIdentifier` remains intentionally looser for display
  * and diagnostics.
  */
-export function isSafeIdentifier(value: unknown, maxLength = MAX_RESOURCE_ID_LENGTH): value is string {
+export function isSafeIdentifier(
+  value: unknown,
+  maxLength = MAX_RESOURCE_ID_LENGTH
+): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&
@@ -53,11 +56,21 @@ export function isSafeIdentifier(value: unknown, maxLength = MAX_RESOURCE_ID_LEN
 }
 
 export function isSafeResourceId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= MAX_RESOURCE_ID_LENGTH && SAFE_RESOURCE_ID_PATTERN.test(value);
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_RESOURCE_ID_LENGTH &&
+    SAFE_RESOURCE_ID_PATTERN.test(value)
+  );
 }
 
 export function isSafeSessionId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= MAX_SESSION_ID_LENGTH && SAFE_IDENTIFIER_PATTERN.test(value);
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_SESSION_ID_LENGTH &&
+    SAFE_IDENTIFIER_PATTERN.test(value)
+  );
 }
 
 export function isSafePathSegment(value: unknown): value is string {
@@ -77,12 +90,17 @@ export function isSafePathSegment(value: unknown): value is string {
 export function isSafeRelativePath(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > MAX_RELATIVE_PATH_LENGTH) return false;
   if (value === '') return true;
-  if (value.startsWith('/') || value.includes('\\') || /[\u0000-\u001F\u007F]/.test(value)) return false;
+  if (value.startsWith('/') || value.includes('\\') || /[\u0000-\u001F\u007F]/.test(value))
+    return false;
   return value.split('/').every((segment) => isSafePathSegment(segment));
 }
 
 export function isSafeChatToken(value: unknown): value is string {
-  return typeof value === 'string' && value.length === CHAT_TOKEN_LENGTH && CHAT_TOKEN_PATTERN.test(value);
+  return (
+    typeof value === 'string' &&
+    value.length === CHAT_TOKEN_LENGTH &&
+    CHAT_TOKEN_PATTERN.test(value)
+  );
 }
 
 export function isSafeImageDataUrl(value: unknown): value is string {
@@ -160,7 +178,9 @@ export function isSafeVirtualIp(value: unknown): value is string {
   const parts = value.trim().split('.');
   if (
     parts.length !== 4 ||
-    !parts.every((part) => /^(?:0|[1-9]\d{0,2})$/.test(part) && Number(part) >= 0 && Number(part) <= 255)
+    !parts.every(
+      (part) => /^(?:0|[1-9]\d{0,2})$/.test(part) && Number(part) >= 0 && Number(part) <= 255
+    )
   ) {
     return false;
   }
@@ -175,9 +195,9 @@ export function isSafeVirtualDomain(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const domain = value.trim();
   if (domain.length === 0 || domain.length > 253 || domain.includes('..')) return false;
-  return domain.split('.').every((label) =>
-    /^(?=.{1,63}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label),
-  );
+  return domain
+    .split('.')
+    .every((label) => /^(?=.{1,63}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label));
 }
 
 export interface TrustedTodoItem {

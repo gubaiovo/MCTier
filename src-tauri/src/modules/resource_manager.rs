@@ -11,7 +11,7 @@ static EASYTIER_CORE_BYTES: &[u8] = include_bytes!("../../resources/binaries/eas
 #[cfg(windows)]
 #[allow(dead_code)]
 static EASYTIER_CLI_BYTES: &[u8] = include_bytes!("../../resources/binaries/easytier-cli.exe");
-#[cfg(windows)]
+#[cfg(all(windows, feature = "bundled-npcap"))]
 #[allow(dead_code)]
 static PACKET_DLL_BYTES: &[u8] = include_bytes!("../../resources/binaries/Packet.dll");
 #[cfg(windows)]
@@ -264,8 +264,10 @@ impl ResourceManager {
         ))
     }
     
-    /// 获取 Packet.dll 的路径
-    #[cfg(target_os = "windows")]
+    /// 获取 Packet.dll 的路径。
+    ///
+    /// 公开构建不会内嵌 Npcap 的专有 DLL，而是使用用户通过官方安装器安装的副本。
+    #[cfg(all(target_os = "windows", feature = "bundled-npcap"))]
     pub fn get_packet_dll_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         #[cfg(debug_assertions)]
         {
@@ -279,6 +281,33 @@ impl ResourceManager {
         {
             Self::extract_binary(app_handle, "Packet.dll", PACKET_DLL_BYTES)
         }
+    }
+
+    #[cfg(all(target_os = "windows", not(feature = "bundled-npcap")))]
+    pub fn get_packet_dll_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
+        let windows_dir = std::env::var_os("WINDIR").map(PathBuf::from).ok_or_else(|| {
+            AppError::ConfigError(
+                "无法定位 Windows 系统目录；请从 https://npcap.com 安装 Npcap 后重试"
+                    .to_string(),
+            )
+        })?;
+
+        Self::find_installed_packet_dll(&windows_dir).ok_or_else(|| {
+            AppError::ConfigError(
+                "未找到 Npcap 的 Packet.dll。此公开构建不内嵌 Npcap；请从 https://npcap.com 安装官方 Npcap（建议启用 WinPcap API-compatible Mode）后重试"
+                    .to_string(),
+            )
+        })
+    }
+
+    #[cfg(all(target_os = "windows", not(feature = "bundled-npcap")))]
+    fn find_installed_packet_dll(windows_dir: &std::path::Path) -> Option<PathBuf> {
+        [
+            windows_dir.join("System32").join("Npcap").join("Packet.dll"),
+            windows_dir.join("System32").join("Packet.dll"),
+        ]
+        .into_iter()
+        .find(|path| path.is_file())
     }
     /// 获取 wintun.dll 的路径（仅 Windows；Linux 走内核 TUN，无此依赖）
     #[cfg(windows)]

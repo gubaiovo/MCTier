@@ -23,7 +23,11 @@ export function isReleaseVersion(value: unknown): value is string {
 
 export function compareVersions(left: string, right: string): number {
   const toParts = (version: string): number[] | null => {
-    if (typeof version !== 'string' || version.length === 0 || version.length > MAX_VERSION_LENGTH) {
+    if (
+      typeof version !== 'string' ||
+      version.length === 0 ||
+      version.length > MAX_VERSION_LENGTH
+    ) {
       return null;
     }
     const parts = version.replace(/^v/i, '').split('.');

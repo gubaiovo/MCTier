@@ -144,11 +144,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <div className="error-boundary-container">
           <Result
             status="error"
-            title={isCritical ? tl('应用程序遇到严重错误', 'The application hit a critical error') : tl('应用程序遇到错误', 'The application hit an error')}
+            title={
+              isCritical
+                ? tl('应用程序遇到严重错误', 'The application hit a critical error')
+                : tl('应用程序遇到错误', 'The application hit an error')
+            }
             subTitle={
               isCritical
-                ? tl('应用程序多次遇到错误，建议清理缓存或重新安装。', 'The app has errored multiple times; consider clearing the cache or reinstalling.')
-                : tl('抱歉，应用程序遇到了一个意外错误。您可以尝试重新加载或联系技术支持。', 'Sorry, the app encountered an unexpected error. You can try reloading or contact support.')
+                ? tl(
+                    '应用程序多次遇到错误，建议清理缓存或重新安装。',
+                    'The app has errored multiple times; consider clearing the cache or reinstalling.'
+                  )
+                : tl(
+                    '抱歉，应用程序遇到了一个意外错误。您可以尝试重新加载或联系技术支持。',
+                    'Sorry, the app encountered an unexpected error. You can try reloading or contact support.'
+                  )
             }
             extra={
               <Space direction="vertical" size="middle">
@@ -176,7 +186,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
               {errorCount > 1 && (
                 <Paragraph>
-                  <Text type="warning">{tl('错误已发生', 'Error occurred')} {errorCount} {tl('次', 'time(s)')}</Text>
+                  <Text type="warning">
+                    {tl('错误已发生', 'Error occurred')} {errorCount} {tl('次', 'time(s)')}
+                  </Text>
                 </Paragraph>
               )}
 

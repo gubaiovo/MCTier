@@ -31,9 +31,7 @@ export function isComposingKeyEvent({
 }
 
 /** 回车是否应触发提交：必须是回车、不带 Shift、且不在输入法组合态。 */
-export function shouldSubmitOnEnter(
-  signals: ImeSubmitSignals & { shiftKey?: boolean },
-): boolean {
+export function shouldSubmitOnEnter(signals: ImeSubmitSignals & { shiftKey?: boolean }): boolean {
   if (signals.key !== 'Enter') return false;
   if (signals.shiftKey) return false;
   return !isComposingKeyEvent(signals);

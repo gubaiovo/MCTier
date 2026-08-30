@@ -6,7 +6,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Empty, Tabs, App } from 'antd';
-import { recentService, type RecentLobby, type RecentPlayer } from '../../services/recent/recentService';
+import {
+  recentService,
+  type RecentLobby,
+  type RecentPlayer,
+} from '../../services/recent/recentService';
 import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
 
@@ -28,7 +32,11 @@ function formatTime(ts: number): string {
   return `${day}${tl(' 天前', ' d ago')}`;
 }
 
-export const RecentManager: React.FC<RecentManagerProps> = ({ visible, onClose, onSelectLobby }) => {
+export const RecentManager: React.FC<RecentManagerProps> = ({
+  visible,
+  onClose,
+  onSelectLobby,
+}) => {
   useTranslation();
   // 使用 App.useApp() 的 hook 版 message/modal：确认弹层始终置顶且可点击，
   // 避免内嵌 Popconfirm 在 Modal 内被遮挡导致「删除/清空」点击无反应。
@@ -90,13 +98,29 @@ export const RecentManager: React.FC<RecentManagerProps> = ({ visible, onClose, 
             >
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{l.name}</div>
-                <div className="recent-item-meta" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
-                  {l.playerName ? tl(`玩家：${l.playerName} · `, `Player: ${l.playerName} · `) : ''}{formatTime(l.lastJoined)}
+                <div
+                  className="recent-item-meta"
+                  style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}
+                >
+                  {l.playerName ? tl(`玩家：${l.playerName} · `, `Player: ${l.playerName} · `) : ''}
+                  {formatTime(l.lastJoined)}
                 </div>
               </div>
-              <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Button type="primary" size="small" onClick={() => handleSelect(l)}>{tl('快速重进', 'Rejoin')}</Button>
-                <Button className="recent-danger-button" size="small" danger onClick={() => handleRemoveLobby(l)}>{tl('删除', 'Delete')}</Button>
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ display: 'flex', gap: 8, alignItems: 'center' }}
+              >
+                <Button type="primary" size="small" onClick={() => handleSelect(l)}>
+                  {tl('快速重进', 'Rejoin')}
+                </Button>
+                <Button
+                  className="recent-danger-button"
+                  size="small"
+                  danger
+                  onClick={() => handleRemoveLobby(l)}
+                >
+                  {tl('删除', 'Delete')}
+                </Button>
               </div>
             </div>
           ))}
@@ -124,7 +148,10 @@ export const RecentManager: React.FC<RecentManagerProps> = ({ visible, onClose, 
               }}
             >
               {p.name}
-              <span className="recent-item-meta" style={{ color: 'rgba(255,255,255,0.45)', marginLeft: 6, fontSize: 11 }}>
+              <span
+                className="recent-item-meta"
+                style={{ color: 'rgba(255,255,255,0.45)', marginLeft: 6, fontSize: 11 }}
+              >
                 {formatTime(p.lastSeen)}
               </span>
             </div>
@@ -136,9 +163,10 @@ export const RecentManager: React.FC<RecentManagerProps> = ({ visible, onClose, 
 
   const handleClear = () => {
     modal.confirm({
-      title: activeTab === 'lobbies'
-        ? tl('确定清空全部最近大厅？', 'Clear all recent lobbies?')
-        : tl('确定清空全部最近玩家？', 'Clear all recent players?'),
+      title:
+        activeTab === 'lobbies'
+          ? tl('确定清空全部最近大厅？', 'Clear all recent lobbies?')
+          : tl('确定清空全部最近玩家？', 'Clear all recent players?'),
       okText: tl('清空', 'Clear'),
       cancelText: tl('取消', 'Cancel'),
       okButtonProps: { danger: true },
@@ -163,8 +191,18 @@ export const RecentManager: React.FC<RecentManagerProps> = ({ visible, onClose, 
       open={visible}
       onCancel={onClose}
       footer={[
-        <Button key="clear" className="recent-danger-button" danger style={{ float: 'left' }} onClick={handleClear}>{tl('清空', 'Clear')}</Button>,
-        <Button key="close" type="primary" onClick={onClose}>{tl('关闭', 'Close')}</Button>,
+        <Button
+          key="clear"
+          className="recent-danger-button"
+          danger
+          style={{ float: 'left' }}
+          onClick={handleClear}
+        >
+          {tl('清空', 'Clear')}
+        </Button>,
+        <Button key="close" type="primary" onClick={onClose}>
+          {tl('关闭', 'Close')}
+        </Button>,
       ]}
       width={500}
       centered

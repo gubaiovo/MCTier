@@ -65,12 +65,14 @@ class P2PChatService {
   initialize(peerIps: string[], currentPlayerId: string, myVirtualIp: string): void {
     // 更新玩家IPs和ID（发送消息时仍需要 peerIps）
     const localIp = isSafeVirtualIp(myVirtualIp) ? myVirtualIp.trim() : '';
-    this.peerIps = Array.from(new Set(
-      (Array.isArray(peerIps) ? peerIps : [])
-        .filter((ip): ip is string => isSafeVirtualIp(ip))
-        .map((ip) => ip.trim())
-        .filter((ip) => ip !== localIp),
-    ));
+    this.peerIps = Array.from(
+      new Set(
+        (Array.isArray(peerIps) ? peerIps : [])
+          .filter((ip): ip is string => isSafeVirtualIp(ip))
+          .map((ip) => ip.trim())
+          .filter((ip) => ip !== localIp)
+      )
+    );
     this.currentPlayerId = sanitizeIdentifier(currentPlayerId);
     this.myVirtualIp = localIp;
 
@@ -94,7 +96,7 @@ class P2PChatService {
       void this.connectToSelfStream();
     }
   }
-  
+
   /**
    * 重置服务状态（退出大厅时调用）
    */
@@ -203,7 +205,10 @@ class P2PChatService {
       try {
         this.handleMessage(JSON.parse(data) as BackendChatMessage);
       } catch (error) {
-        console.warn('⚠️ [P2PChatService] 忽略无效消息流帧:', error instanceof Error ? error.message : '解析失败');
+        console.warn(
+          '⚠️ [P2PChatService] 忽略无效消息流帧:',
+          error instanceof Error ? error.message : '解析失败'
+        );
       }
     }
     return remainder;
@@ -235,13 +240,25 @@ class P2PChatService {
     const playerId = sanitizeIdentifier(msg.player_id);
     const messageType = sanitizeIdentifier(msg.message_type, 32).toLowerCase();
     const playerName = sanitizeUntrustedText(msg.player_name, 64).trim();
-    const contentLimit = messageType === 'todo' ? MAX_TODO_ITEMS * (MAX_TODO_TEXT_LENGTH + 128) : MAX_CHAT_TEXT_LENGTH;
+    const contentLimit =
+      messageType === 'todo' ? MAX_TODO_ITEMS * (MAX_TODO_TEXT_LENGTH + 128) : MAX_CHAT_TEXT_LENGTH;
     const content = sanitizeUntrustedText(msg.content, contentLimit);
     const timestamp = typeof msg.timestamp === 'number' ? msg.timestamp : Number.NaN;
 
     if (!messageId || !playerId || !Number.isFinite(timestamp) || timestamp < 0) return;
-    if (!['text', 'image', 'announce', 'voicegroup', 'todo', 'recall', 'avatar'].includes(messageType)) return;
-    if (messageType !== 'announce' && messageType !== 'voicegroup' && messageType !== 'todo' && messageType !== 'recall' && messageType !== 'avatar' && !playerName) return;
+    if (
+      !['text', 'image', 'announce', 'voicegroup', 'todo', 'recall', 'avatar'].includes(messageType)
+    )
+      return;
+    if (
+      messageType !== 'announce' &&
+      messageType !== 'voicegroup' &&
+      messageType !== 'todo' &&
+      messageType !== 'recall' &&
+      messageType !== 'avatar' &&
+      !playerName
+    )
+      return;
     if (messageType === 'image' && !this.isSafeImageBytes(msg.image_data)) return;
 
     const safeMessage: BackendChatMessage = {
@@ -311,7 +328,10 @@ class P2PChatService {
       type: safeMessage.message_type === 'image' ? 'image' : 'text',
       imageData: safeMessage.image_data ? this.arrayToBase64(safeMessage.image_data) : undefined,
     };
-    if (this.pendingRecalls.get(safeMessage.id) === safeMessage.player_id && isWithinRecallWindow(chatMessage.timestamp)) {
+    if (
+      this.pendingRecalls.get(safeMessage.id) === safeMessage.player_id &&
+      isWithinRecallWindow(chatMessage.timestamp)
+    ) {
       chatMessage.content = '';
       chatMessage.imageData = undefined;
       chatMessage.type = 'text';
@@ -345,7 +365,10 @@ class P2PChatService {
         store.setAnnouncement(sanitizeUntrustedText(msg.content, MAX_ANNOUNCEMENT_LENGTH).trim());
       } else if (type === 'voicegroup') {
         const g = Number.parseInt((msg.content ?? '0').trim(), 10);
-        store.setPlayerVoiceGroup(msg.player_id, Number.isFinite(g) ? Math.max(0, Math.min(4, g)) : 0);
+        store.setPlayerVoiceGroup(
+          msg.player_id,
+          Number.isFinite(g) ? Math.max(0, Math.min(4, g)) : 0
+        );
       } else if (type === 'todo') {
         // 多人协同待办：内容为待办列表 JSON，收到后覆盖本地（后写覆盖），实现全队同步
         try {
@@ -447,7 +470,10 @@ class P2PChatService {
   /**
    * 发送文本消息，返回送达统计 {delivered, total}
    */
-  async sendTextMessage(content: string, messageId?: string): Promise<{ delivered: number; total: number }> {
+  async sendTextMessage(
+    content: string,
+    messageId?: string
+  ): Promise<{ delivered: number; total: number }> {
     if (!this.currentPlayerId) {
       throw new Error('未初始化：缺少玩家ID');
     }
@@ -479,7 +505,11 @@ class P2PChatService {
    * 发送图片消息（Base64格式）
    * 【优化】使用更高效的数据转换方式
    */
-  async sendImageMessage(imageDataUrl: string, content = '[图片]', messageId?: string): Promise<void> {
+  async sendImageMessage(
+    imageDataUrl: string,
+    content = '[图片]',
+    messageId?: string
+  ): Promise<void> {
     if (!this.currentPlayerId) {
       throw new Error('未初始化：缺少玩家ID');
     }
@@ -493,14 +523,14 @@ class P2PChatService {
     try {
       // 从Data URL中提取Base64数据
       const base64Data = safeImageDataUrl.split(',')[1];
-      
+
       // 【优化】使用Uint8Array直接转换，避免中间字符串
       const binaryString = atob(base64Data);
       const bytes = new Uint8Array(binaryString.length);
       if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) {
         throw new Error('图片大小超出限制');
       }
-      
+
       // 分块处理，提高性能
       const chunkSize = 8192;
       for (let i = 0; i < binaryString.length; i += chunkSize) {
@@ -511,7 +541,7 @@ class P2PChatService {
       }
 
       const startTime = performance.now();
-      
+
       await invoke('send_p2p_chat_message', {
         playerId: this.currentPlayerId,
         playerName: '', // 后端会自动填充
@@ -521,9 +551,11 @@ class P2PChatService {
         messageId: safeMessageId,
         peerIps: this.peerIps,
       });
-      
+
       const elapsed = performance.now() - startTime;
-      console.log(`✅ [P2PChatService] 图片消息已发送 (耗时: ${elapsed.toFixed(2)}ms, 大小: ${(bytes.length / 1024).toFixed(2)}KB)`);
+      console.log(
+        `✅ [P2PChatService] 图片消息已发送 (耗时: ${elapsed.toFixed(2)}ms, 大小: ${(bytes.length / 1024).toFixed(2)}KB)`
+      );
     } catch (error) {
       console.error('❌ [P2PChatService] 发送图片消息失败:', error);
       throw error;
@@ -567,12 +599,12 @@ class P2PChatService {
     const bytes = new Uint8Array(data);
     let binary = '';
     const chunkSize = 8192; // 分块处理，提高性能
-    
+
     for (let i = 0; i < bytes.length; i += chunkSize) {
       const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
       binary += String.fromCharCode.apply(null, Array.from(chunk));
     }
-    
+
     const base64 = btoa(binary);
     // 前端已统一转换为JPEG格式
     return `data:image/jpeg;base64,${base64}`;

@@ -104,7 +104,7 @@ export class HotkeyManager {
 
   /**
    * 注册快捷键（支持按下和松开事件）
-   * 
+   *
    * @param key 快捷键字符串
    * @param options 配置选项
    * @param options.onPress 按下时的回调（可选）
@@ -261,11 +261,11 @@ export class HotkeyManager {
 
       // 移除事件监听器
       window.removeEventListener('keydown', registration.handler);
-      
+
       if (registration.keyDownHandler) {
         window.removeEventListener('keydown', registration.keyDownHandler);
       }
-      
+
       if (registration.keyUpHandler) {
         window.removeEventListener('keyup', registration.keyUpHandler);
       }

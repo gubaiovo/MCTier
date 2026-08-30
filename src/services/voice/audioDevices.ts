@@ -20,7 +20,9 @@ export const audioDevices = {
     try {
       if (id) localStorage.setItem(INPUT_KEY, id);
       else localStorage.removeItem(INPUT_KEY);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   },
   getOutputDeviceId(): string {
     try {
@@ -42,6 +44,8 @@ export const audioDevices = {
       else localStorage.removeItem(OUTPUT_KEY);
       if (name) localStorage.setItem(OUTPUT_NAME_KEY, name);
       else localStorage.removeItem(OUTPUT_NAME_KEY);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   },
 };

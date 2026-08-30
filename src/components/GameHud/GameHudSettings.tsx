@@ -29,16 +29,31 @@ export const GameHudSettings: React.FC = () => {
           <span>{tl('HUD 浮层透明度', 'HUD Opacity')}</span>
           <span className="snd-vol-val">{Math.round(opacity * 100)}%</span>
         </div>
-        <Slider min={0.2} max={1} step={0.05} value={opacity} onChange={(v) => updateOpacity(v as number)} />
+        <Slider
+          min={0.2}
+          max={1}
+          step={0.05}
+          value={opacity}
+          onChange={(v) => updateOpacity(v as number)}
+        />
       </div>
       <div className="snd-block">
         <div className="snd-block-title">
           <span>{tl('HUD 浮层尺寸', 'HUD Size')}</span>
           <span className="snd-vol-val">{Math.round(scale * 100)}%</span>
         </div>
-        <Slider min={0.7} max={1.6} step={0.05} value={scale} onChange={(v) => updateScale(v as number)} />
+        <Slider
+          min={0.7}
+          max={1.6}
+          step={0.05}
+          value={scale}
+          onChange={(v) => updateScale(v as number)}
+        />
         <div className="snd-block-desc">
-          {tl('调整游戏内 HUD 浮层的透明度与整体尺寸（等比缩放），数值越低越不挡视野。在「房间工具 - 联机」中开启 HUD 后即时生效。', 'Adjust the in-game HUD overlay opacity and overall size (uniform scaling); lower values block your view less. Takes effect immediately once HUD is enabled in Room Tools - Networking.')}
+          {tl(
+            '调整游戏内 HUD 浮层的透明度与整体尺寸（等比缩放），数值越低越不挡视野。在「房间工具 - 联机」中开启 HUD 后即时生效。',
+            'Adjust the in-game HUD overlay opacity and overall size (uniform scaling); lower values block your view less. Takes effect immediately once HUD is enabled in Room Tools - Networking.'
+          )}
         </div>
       </div>
     </div>

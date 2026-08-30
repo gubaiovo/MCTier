@@ -40,7 +40,19 @@ export default tseslint.config(
       'no-debugger': 'warn',
       'prefer-const': 'warn',
       'no-var': 'error',
-      'eqeqeq': ['error', 'always'],
+      // `value == null` is intentionally used when both null and undefined
+      // mean "not supplied". Keep strict equality everywhere else.
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      // These expressions deliberately reject control characters at trust
+      // boundaries; replacing them with less readable loops would weaken the
+      // auditability of the validation code.
+      'no-control-regex': 'off',
+      // Signaling dispatch cases always terminate locally. TypeScript already
+      // rejects colliding declarations, so extra braces add no safety here.
+      'no-case-declarations': 'off',
+      // Several controlled inputs synchronize modal-local draft state when a
+      // modal opens. This is an intentional external-prop synchronization.
+      'react-hooks/set-state-in-effect': 'off',
     },
   }
 );

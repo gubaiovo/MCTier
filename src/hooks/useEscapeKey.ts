@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 /**
  * ESC键监听Hook
  * 只在窗口聚焦时监听ESC键
- * 
+ *
  * @param onEscape - ESC键按下时的回调函数
  * @param enabled - 是否启用监听，默认为true
  */

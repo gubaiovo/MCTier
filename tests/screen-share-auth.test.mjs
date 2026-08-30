@@ -9,8 +9,8 @@ const androidRepository = fs.readFileSync(new URL('../MCTier-Android/app/src/mai
 test('relay viewers cannot use a legacy or unassigned offer', () => {
   const desktopOffer = desktop.slice(desktop.indexOf('async handleOffer'), desktop.indexOf('async handleAnswer'));
   const mismatch = desktopOffer.slice(
-    desktopOffer.indexOf('if (!isLegacyDirectOffer && (isNullish(expectedVersion)'),
-    desktopOffer.indexOf('if (isLegacyDirectOffer && share.requirePassword'),
+    desktopOffer.indexOf('const expectedVersion'),
+    desktopOffer.indexOf('const sourceStream'),
   );
   const androidOffer = androidController.slice(
     androidController.indexOf('private fun handleViewerOffer'),
@@ -19,14 +19,14 @@ test('relay viewers cannot use a legacy or unassigned offer', () => {
 
   assert.match(desktopOffer, /if \(!isOwner && isNullish\(offer\.routeVersion\)\) return;/);
   assert.match(mismatch, /return;/);
-  assert.match(mismatch, /pendingRelayOffers\.set\(this\.relayOfferKey\(/);
+  assert.match(mismatch, /pendingRelayOffers\.set\(\s*this\.relayOfferKey\(/);
   assert.match(androidOffer, /if \(!isOwner && message\.routeVersion == null\) return/);
 });
 
 test('ICE buffering is partitioned by direction, peer, and route version', () => {
-  assert.match(desktop, /private iceKey\(shareId: string, direction: 'in' \| 'out', peerId: string, routeVersion\?: number\)/);
+  assert.match(desktop, /private iceKey\([\s\S]*?shareId: string,[\s\S]*?direction: 'in' \| 'out',[\s\S]*?peerId: string,[\s\S]*?routeVersion\?: number[\s\S]*?\): string/);
   assert.match(androidController, /private fun iceKey\(shareId: String, direction: String, playerId: String, routeVersion: Int\?\)/);
-  assert.match(desktop, /flushPendingIce\(this\.iceKey\(offer\.shareId, 'out', offer\.playerId, offer\.routeVersion\), pc\)/);
+  assert.match(desktop, /flushPendingIce\(\s*this\.iceKey\(offer\.shareId, 'out', offer\.playerId, offer\.routeVersion\),\s*pc\s*\)/);
   assert.match(androidController, /flushPendingIce\(iceKey\(shareId, "out", from, message\.routeVersion\), pc\)/);
 });
 
@@ -70,7 +70,7 @@ test('Android rejects a required screen-share password before mutating capture s
 test('Relay offers are keyed and resumed by their exact route version', () => {
   assert.match(desktop, /private relayOfferKey\(shareId: string, peerId: string, routeVersion\?: number\)/);
   assert.match(androidController, /private fun relayOfferKey\(shareId: String, playerId: String, routeVersion: Int\?\)/);
-  assert.match(desktop, /this\.pendingRelayOffers\.set\(this\.relayOfferKey\(offer\.shareId, offer\.playerId, Number\(offer\.routeVersion\)\), offer\)/);
+  assert.match(desktop, /this\.pendingRelayOffers\.set\(\s*this\.relayOfferKey\(offer\.shareId, offer\.playerId, Number\(offer\.routeVersion\)\),\s*offer\s*\)/);
   assert.match(androidController, /pendingOffers\[relayOfferKey\(shareId, from, message\.routeVersion\)\] = message/);
   assert.match(desktop, /const pendingKey = this\.relayOfferKey\(shareId, message\.downstreamId, routeVersion\)/);
   assert.match(androidController, /pendingOffers\.remove\(relayOfferKey\(shareId, downstreamId, version\)\)/);
