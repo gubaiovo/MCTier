@@ -538,8 +538,10 @@ pub async fn create_lobby(
 
             log::info!("使用前端提供的玩家ID: {}", player_id);
 
-            // 所有客户端都连接到官方 WebSockets 信令服务器 (wss://mctier.pmhs.top/signaling)
-            log::info!("客户端将连接到官方 WebSockets 信令服务器: wss://mctier.pmhs.top/signaling");
+            log::info!(
+                "客户端将连接到 WebSocket 信令服务器: {}",
+                lobby.signaling_server
+            );
 
             // 不再在创建大厅时自动启动HTTP文件服务器
             // HTTP服务器将在第一次添加共享时按需启动
@@ -669,8 +671,10 @@ pub async fn join_lobby(
 
             log::info!("使用前端提供的玩家ID: {}", player_id);
 
-            // 所有客户端都连接到官方 WebSockets 信令服务器 (wss://mctier.pmhs.top/signaling)
-            log::info!("客户端将连接到官方 WebSockets 信令服务器: wss://mctier.pmhs.top/signaling");
+            log::info!(
+                "客户端将连接到 WebSocket 信令服务器: {}",
+                lobby.signaling_server
+            );
 
             // 启动P2P信令服务
             log::info!("正在启动P2P信令服务（加入大厅）...");

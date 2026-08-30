@@ -34,6 +34,7 @@ const androidSignaling = fs.readFileSync(
   'utf8'
 );
 const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const macInfoPlist = fs.readFileSync(new URL('../src-tauri/Info.plist', import.meta.url), 'utf8');
 
 test('lobby members are identified by player ID instead of a transient virtual IP', () => {
   assert.doesNotMatch(desktopRtc, /player\.virtualIp === this\.virtualIp/);
@@ -122,6 +123,21 @@ test('Android buffers initial signaling events until its single roster consumer 
   assert.match(androidSignaling, /Channel<SignalingEnvelope>/);
   assert.match(androidSignaling, /receiveAsFlow\(\)/);
   assert.doesNotMatch(androidSignaling, /MutableSharedFlow<SignalingEnvelope>/);
+});
+
+test('Android surfaces an initial signaling connection failure instead of showing a silent solo lobby', () => {
+  assert.match(androidSignaling, /connectionFailureChannel/);
+  assert.match(androidSignaling, /reportedFailureGeneration != generation/);
+  assert.match(androidRepository, /signalingClient\.connectionFailures\.collect/);
+  assert.match(androidRepository, /信令服务器连接失败/);
+  assert.match(androidRepository, /reconnecting = true/);
+});
+
+test('macOS permits runtime private WebSocket signaling without disabling native ATS', () => {
+  assert.match(macInfoPlist, /<key>NSAppTransportSecurity<\/key>/);
+  assert.match(macInfoPlist, /<key>NSAllowsArbitraryLoadsInWebContent<\/key>\s*<true\/>/);
+  assert.doesNotMatch(macInfoPlist, /<key>NSAllowsArbitraryLoads<\/key>/);
+  assert.doesNotMatch(macInfoPlist, /floatawa\.top/);
 });
 
 test('tokenless legacy signaling cannot masquerade as a successful lobby join', () => {

@@ -41,6 +41,13 @@ class SignalingClient {
     private val eventChannel = Channel<SignalingEnvelope>(capacity = Channel.BUFFERED)
     val events: Flow<SignalingEnvelope> = eventChannel.receiveAsFlow()
 
+    // 首次连接失败必须反馈给 UI；否则 EasyTier 已成功时会表现为“已在大厅但永远只有自己”。
+    // 同一 connectionGeneration 只上报一次，避免自动重连期间反复弹出相同错误。
+    private val connectionFailureChannel = Channel<String>(capacity = Channel.BUFFERED)
+    val connectionFailures: Flow<String> = connectionFailureChannel.receiveAsFlow()
+    @Volatile private var openedGeneration = -1L
+    @Volatile private var reportedFailureGeneration = -1L
+
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected
 
@@ -101,6 +108,7 @@ class SignalingClient {
         val ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 if (ws !== webSocket || generation != connectionGeneration) return
+                openedGeneration = generation
                 _connected.value = true
                 sendRegistration(args)
                 startHeartbeat()
@@ -149,6 +157,12 @@ class SignalingClient {
                 webSocket = null
                 _connected.value = false
                 android.util.Log.e("SignalingClient", "WS onFailure: ${t.message} resp=${response?.code}")
+                if (openedGeneration != generation && reportedFailureGeneration != generation) {
+                    reportedFailureGeneration = generation
+                    connectionFailureChannel.trySend(
+                        t.message?.takeIf { it.isNotBlank() } ?: "WebSocket connection failed",
+                    )
+                }
                 scheduleReconnect(args, generation)
             }
         })

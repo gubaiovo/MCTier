@@ -20,8 +20,8 @@ const models = read('MCTier-Android/app/src/main/java/top/pmh13/mctier/data/Mode
 const chatServer = read('MCTier-Android/app/src/main/java/top/pmh13/mctier/network/ChatHttpServer.kt');
 const chatClient = read('MCTier-Android/app/src/main/java/top/pmh13/mctier/network/ChatP2PClient.kt');
 
-test('Android manifest keeps non-entry components private and disables global cleartext', () => {
-  assert.match(manifest, /android:usesCleartextTraffic="false"/);
+test('Android manifest keeps non-entry components private and supports runtime private nodes', () => {
+  assert.match(manifest, /android:usesCleartextTraffic="true"/);
   assert.match(manifest, /android:name="\.PortraitCaptureActivity"[\s\S]*?android:exported="false"/);
   assert.match(manifest, /android:name="\.service\.ScreenCaptureService"[\s\S]*?android:exported="false"/);
   assert.match(manifest, /android:name="\.service\.VoiceForegroundService"[\s\S]*?android:exported="false"/);
@@ -30,10 +30,12 @@ test('Android manifest keeps non-entry components private and disables global cl
   assert.doesNotMatch(manifest, /androidx\.core\.content\.FileProvider/);
 });
 
-test('network security allows cleartext only through explicit scoped exceptions', () => {
-  assert.match(networkSecurity, /<base-config\s+cleartextTrafficPermitted="false"\s*\/>/);
+test('network security supports user-provided cleartext WebSocket endpoints', () => {
+  assert.match(networkSecurity, /<base-config\s+cleartextTrafficPermitted="true"\s*\/>/);
   assert.match(networkSecurity, /<domain-config\s+cleartextTrafficPermitted="true">/);
-  assert.doesNotMatch(networkSecurity, /cleartextTrafficPermitted="true"[^>]*>\s*<\/base-config>/);
+  assert.doesNotMatch(networkSecurity, /floatawa\.top/);
+  assert.match(inviteCodec, /SignalingSchemes\s*=\s*setOf\("ws",\s*"wss"\)/);
+  assert.match(inviteCodec, /uri\.userInfo\s*==\s*null/);
 });
 
 test('deep links require the registered VIEW route and clear URI credentials after handling', () => {

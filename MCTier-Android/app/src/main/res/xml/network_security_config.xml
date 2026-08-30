@@ -1,26 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    MCTier Android 网络安全配置（见 issue #17 第 10 条）
+    MCTier 允许用户配置任意私人 EasyTier / 信令节点；私人信令节点经常只提供
+    ws:// 地址，因此不能用编译期域名白名单限制明文连接。URL 仍由
+    LobbyInviteCodec 严格限制为 tcp/udp/ws/wss，禁止凭据、控制字符和可执行协议。
 
-    原先在 AndroidManifest 上使用 android:usesCleartextTraffic="true" 全局放行明文 HTTP，
-    等于对任意主机都允许明文。这里改为默认禁止明文，仅对 MCTier 自身必须使用
-    明文 HTTP 的目标放行：
-
-      1. EasyTier 虚拟网段 10.126.126.0/24 内的对端（文件共享 14539 / P2P 聊天 14540）；
-      2. Magic DNS 虚拟域名 mct.net（对端主机名解析到上述虚拟 IP）。
-
-    这些流量本身运行在 EasyTier 的加密隧道内，且目标只可能是同一大厅的成员。
-    对外网请求（如 https://gitee.com 版本检查、https://mctier.pmhs.top）一律走 HTTPS，
-    因此不需要明文权限。
+    EasyTier 虚拟网段上的文件与聊天 HTTP 流量运行在加密隧道内。公网节点建议
+    优先部署 WSS，但 ws:// 作为明确的用户配置仍需跨平台可用。
 
     说明：Android 网络安全配置的 <domain> 不支持 CIDR 写法，因此这里逐个列出
     该 /24 网段内的可用主机地址（10.126.126.1 - 10.126.126.254）。
 -->
 <network-security-config>
-    <!-- 默认：禁止明文，强制 HTTPS -->
-    <base-config cleartextTrafficPermitted="false" />
+    <!-- 私人节点地址是运行时用户输入，无法预先枚举域名。 -->
+    <base-config cleartextTrafficPermitted="true" />
 
-    <!-- 例外：仅 EasyTier 虚拟网段与 Magic DNS 域名允许明文 -->
+    <!-- 例外：EasyTier 加密隧道内的虚拟网段与 Magic DNS。 -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">mct.net</domain>
         <domain includeSubdomains="false">10.126.126.1</domain>

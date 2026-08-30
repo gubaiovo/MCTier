@@ -262,6 +262,21 @@ class MctierRepository(private val context: Context) {
     init {
         clearAvatarCacheOnStartup()
         scope.launch { signalingClient.events.collect { handleSignal(it) } }
+        scope.launch {
+            signalingClient.connectionFailures.collect { detail ->
+                if (_state.value.state == AppConnectionState.InLobby) {
+                    _state.update {
+                        it.copy(
+                            error = L(
+                                "信令服务器连接失败：$detail",
+                                "Signaling server connection failed: $detail",
+                            ),
+                            reconnecting = true,
+                        )
+                    }
+                }
+            }
+        }
         // 应用已保存的音效/免打扰设置
         soundManager.applySettings(_state.value.settings)
         // 应用弹幕配置
