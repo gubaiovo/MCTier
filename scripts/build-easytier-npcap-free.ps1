@@ -192,7 +192,10 @@ try {
 
     $remainingStaticLinks = @(
         Get-ChildItem -LiteralPath $vendorDir -Recurse -File -Filter '*.rs' |
-            Select-String -Pattern '#\s*\[\s*link\s*\(\s*name\s*=\s*"Packet"' -CaseSensitive
+            # Anchor the expression at the start of a Rust attribute.  The patched
+            # source deliberately explains the removed `#[link(name = "Packet")]`
+            # declaration in comments, which must not trip this guard.
+            Select-String -Pattern '^\s*#\s*\[\s*link\s*\(\s*name\s*=\s*"Packet"' -CaseSensitive
     )
     if ($remainingStaticLinks.Count -gt 0) {
         throw '补丁后仍发现 #[link(name = "Packet")]，拒绝继续构建。'
