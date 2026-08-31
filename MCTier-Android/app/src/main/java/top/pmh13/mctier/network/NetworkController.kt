@@ -87,15 +87,19 @@ class NetworkController(private val context: Context) {
             error(EasyTierJNI.getLastError() ?: "EasyTier start failed")
         }
         currentInstanceName = instanceName
-        Log.i(TAG, "EasyTier instance started; starting VPN route=${lobbyRoute(lobbyName)}")
-        startVpnService(instanceName, "$virtualIp/24", lobbyRoute(lobbyName), useDomain)
-        delay(900)
-
         val reportedIp = waitForVirtualIp(instanceName)
         if (reportedIp.isNullOrBlank()) {
             stopEasyTier()
             error("EasyTier did not report a virtual IP")
         }
+        Log.i(TAG, "EasyTier runtime ready at $reportedIp; attaching VPN route=${lobbyRoute(lobbyName)}")
+        startVpnService(instanceName, "$virtualIp/24", lobbyRoute(lobbyName), useDomain)
+        val tunError = waitForTunReady(instanceName)
+        if (tunError != null) {
+            stopEasyTier()
+            error(tunError)
+        }
+        Log.i(TAG, "EasyTier TUN data plane is ready for instance=$instanceName")
         return NetworkSession(networkName, password, normalizedNode, virtualIp)
     }
 
@@ -203,6 +207,27 @@ class NetworkController(private val context: Context) {
             delay(500)
         }
         return null
+    }
+
+    /**
+     * setTunFd() only confirms that the descriptor was queued for the native runtime.
+     * Wait for EasyTier's own device event before publishing this session to signaling;
+     * otherwise peers can probe chat/file ports while the TUN data plane is still absent.
+     */
+    private suspend fun waitForTunReady(instanceName: String): String? {
+        repeat(TUN_READY_ATTEMPTS) {
+            val json = runCatching { EasyTierJNI.collectNetworkInfos(20) }.getOrNull()
+            val instanceIndex = json?.indexOf(instanceName) ?: -1
+            if (instanceIndex >= 0) {
+                val instanceInfo = json!!.substring(instanceIndex)
+                if (instanceInfo.contains("TunDeviceReady")) return null
+                if (instanceInfo.contains("TunDeviceError")) {
+                    return "EasyTier failed to attach the Android VPN interface"
+                }
+            }
+            delay(TUN_READY_POLL_MS)
+        }
+        return "Timed out while attaching the Android VPN interface"
     }
 
     private fun startVpnService(instanceName: String, virtualIp: String, route: String, magicDns: Boolean) {
@@ -320,5 +345,7 @@ class NetworkController(private val context: Context) {
 
     private companion object {
         private const val TAG = "NetworkController"
+        private const val TUN_READY_ATTEMPTS = 40
+        private const val TUN_READY_POLL_MS = 250L
     }
 }

@@ -258,7 +258,7 @@ The first script downloads `easytier-windows-x86_64-v2.5.0.zip` from the officia
 
 The second script exists for a specific reason: the official `easytier-core.exe` build **statically imports** Npcap's `packet.dll`, and Npcap is not open source software — it may not be redistributed with other software without written permission from the Nmap Project. This script clones EasyTier v2.5.0 (the same commit, so no version bump), applies [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) to drop that import, and then parses the resulting PE import table as a hard gate. It requires `cargo` (MSVC toolchain), `protoc` and `libclang`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8.
 
-The macOS script downloads the archive for the matching architecture from the official EasyTier v2.5.0 release, verifies both the archive and per-file SHA-256 values (aborting on any mismatch), and places the binaries in `src-tauri/resources/binaries/`.
+The macOS script downloads the archive for the matching architecture from the official EasyTier v2.6.4 release, verifies both the archive and per-file SHA-256 values (aborting on any mismatch), and places the binaries in `src-tauri/resources/binaries/`.
 
 ### Step 2: Build
 ```bash
@@ -343,7 +343,8 @@ Source: https://github.com/EasyTier/EasyTier
 
 | Component | Platform | Version | Commit | License | Modified |
 | --- | --- | --- | --- | --- | --- |
-| EasyTier | Windows (separate process) | v2.5.0 | `88a45d11...` | LGPL-3.0 | No |
+| EasyTier | Windows (separate process) | v2.5.0 | `88a45d11...` | LGPL-3.0 | Yes (see Npcap patch) |
+| EasyTier | macOS (separate process) | v2.6.4 | `8428a89d...` | LGPL-3.0 | No |
 | EasyTier | Android (`.so` shared libs) | based on v2.6.0 | `79b562cd...` | LGPL-3.0 | Yes (see patch) |
 
 Related files:

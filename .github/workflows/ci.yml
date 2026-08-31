@@ -426,7 +426,7 @@ jobs:
           path: |
             src-tauri/resources/binaries/easytier-core
             src-tauri/resources/binaries/easytier-cli
-          key: mctier-easytier-macos-${{ matrix.target }}-v2.5.0
+          key: mctier-easytier-macos-${{ matrix.target }}-v2.6.4
 
       - name: Install frontend dependencies
         run: npm ci

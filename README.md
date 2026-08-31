@@ -257,7 +257,7 @@ macOS（自动识别 Intel 或 Apple Silicon，也可显式传入 `x86_64` / `ar
 
 第二个脚本单独存在是有原因的：EasyTier 官方构建的 `easytier-core.exe` 在 PE 导入表中**静态导入** Npcap 的 `packet.dll`，而 Npcap 不是开源软件、未经 Nmap Project 书面许可不得随其他软件再分发。该脚本会克隆 EasyTier v2.5.0（同一 commit，不涉及版本升级）、应用 [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) 去掉这个导入，并在构建后解析产物导入表作为硬门槛。需要 `cargo`（MSVC 工具链）、`protoc` 与 `libclang`。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 第 8 节。
 
-macOS 脚本从 EasyTier 官方 v2.5.0 Release 下载对应架构的压缩包，同时校验压缩包与逐个文件的 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。
+macOS 脚本从 EasyTier 官方 v2.6.4 Release 下载对应架构的压缩包，同时校验压缩包与逐个文件的 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。
 
 ### 第二步：构建
 ```bash
@@ -338,7 +338,8 @@ Source: https://github.com/EasyTier/EasyTier
 
 | 组件 | 平台 | 版本 | Commit | 许可证 | 是否修改 |
 | --- | --- | --- | --- | --- | --- |
-| EasyTier | Windows（独立进程） | v2.5.0 | `88a45d11...` | LGPL-3.0 | 否 |
+| EasyTier | Windows（独立进程） | v2.5.0 | `88a45d11...` | LGPL-3.0 | 是（见 Npcap 补丁） |
+| EasyTier | macOS（独立进程） | v2.6.4 | `8428a89d...` | LGPL-3.0 | 否 |
 | EasyTier | Android（`.so` 动态库） | 基于 v2.6.0 | `79b562cd...` | LGPL-3.0 | 是（见补丁） |
 
 相关文件：

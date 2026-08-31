@@ -631,6 +631,7 @@ class MctierRepository(private val context: Context) {
                 recordRecentLobby(lobby.name, lobby.password, effectiveNode, effectiveSignaling)
                 statsStartSession()
             }.onFailure { e ->
+                Log.e(TAG, "Failed to join lobby", e)
                 _state.update { it.copy(state = AppConnectionState.Error, error = e.message ?: L("加入大厅失败", "Failed to join lobby")) }
             }
         }

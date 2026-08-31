@@ -16,11 +16,13 @@
       1. 以 --depth 1 克隆 EasyTier 源码到临时目录，检出 $EasyTierTag；
       2. 从 crates.io 下载 pnet_datalink 0.35.0 源码，应用
          patches/pnet_datalink-0.35.0-no-npcap.patch，放到 vendor/pnet_datalink/；
-      3. 在根 Cargo.toml 追加 [patch.crates-io] 指向该 vendor 目录；
-      4. cargo build --release 出 easytier-core / easytier-cli；
-      5. 解析产物 PE 导入表，确认其中不含 packet.dll —— 这一步是硬门槛，
+      3. 删除 EasyTier 源码自带的 Packet.dll / Packet.lib，避免链接器从
+         third_party 搜索路径重新拾取专有 Npcap 工件；
+      4. 在根 Cargo.toml 追加 [patch.crates-io] 指向该 vendor 目录；
+      5. cargo build --release 出 easytier-core / easytier-cli；
+      6. 解析产物 PE 导入表，确认其中不含 packet.dll —— 这一步是硬门槛，
          不通过即中止，避免"看起来构建成功但其实依赖仍在"；
-      6. 复制到 src-tauri/resources/binaries/。
+      7. 复制到 src-tauri/resources/binaries/。
 
     刻意不关闭 pnet 的默认 feature：那样会连 pnet::datalink::interfaces() 一起去掉，
     而 EasyTier 在 Windows 上把它用作接口枚举失败时的回退路径。补丁只改链接方式，
@@ -169,6 +171,32 @@ try {
         Pop-Location
     }
     Write-Host '  补丁已应用。' -ForegroundColor Green
+
+    # EasyTier v2.5.0 vendors Packet.lib/Packet.dll for every Windows architecture
+    # and adds the matching directory to the native link search path. Even after the
+    # pnet source patch, leaving those import libraries available lets a stale or
+    # transitive `Packet` link directive silently reintroduce the proprietary runtime
+    # dependency. Remove them before linking so such a regression is either impossible
+    # or fails loudly at link time instead of producing a broken release artifact.
+    $npcapArtifacts = @(
+        Get-ChildItem -LiteralPath (Join-Path $srcDir 'easytier\third_party') -Recurse -File |
+            Where-Object { $_.Name -match '^(?i:packet|wpcap)\.(?:dll|lib)$' }
+    )
+    if ($npcapArtifacts.Count -eq 0) {
+        throw 'EasyTier 源码中未找到预期的 Npcap 工件；上游目录结构可能已变化。'
+    }
+    foreach ($artifact in $npcapArtifacts) {
+        Remove-Item -LiteralPath $artifact.FullName -Force
+    }
+    Write-Host "  已从链接输入移除 $($npcapArtifacts.Count) 个 Packet/Npcap 工件。" -ForegroundColor Green
+
+    $remainingStaticLinks = @(
+        Get-ChildItem -LiteralPath $vendorDir -Recurse -File -Filter '*.rs' |
+            Select-String -Pattern '#\s*\[\s*link\s*\(\s*name\s*=\s*"Packet"' -CaseSensitive
+    )
+    if ($remainingStaticLinks.Count -gt 0) {
+        throw '补丁后仍发现 #[link(name = "Packet")]，拒绝继续构建。'
+    }
 
     $rootManifest = Join-Path $srcDir 'Cargo.toml'
     $patchStanza = @(
