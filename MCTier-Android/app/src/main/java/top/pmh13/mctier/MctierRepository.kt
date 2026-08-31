@@ -588,6 +588,14 @@ class MctierRepository(private val context: Context) {
                 ) {
                     top.pmh13.mctier.service.VoiceForegroundService.start(appContext)
                 }
+                // 聊天签名公钥必须在注册时就带上：信令会把它绑定到本连接的 playerId
+                // 再分发给其他成员，成员因此无法替他人发布公钥。
+                val chatPublicKey = chatClient?.ensureSigningKey()
+                if (chatPublicKey == null) {
+                    rejectChatProtocol(L("无法生成聊天签名密钥", "Unable to generate chat signing key"))
+                    return@launch
+                }
+
                 // 必须先提交本地大厅状态，再打开 WebSocket。服务端通常会在注册后立即回发
                 // players-list；若 connect() 在前，回包线程可能先合并远端成员，随后这里的
                 // players = listOf(self) 又把他们全部覆盖，表现为虚拟 IP 可互通但成员列表为空。
@@ -617,6 +625,7 @@ class MctierRepository(private val context: Context) {
                         virtualIp = lobby.virtualIp,
                         virtualDomain = lobby.virtualDomain,
                         useDomain = lobby.useDomain,
+                        chatPublicKey = chatPublicKey,
                     ),
                 )
                 recordRecentLobby(lobby.name, lobby.password, effectiveNode, effectiveSignaling)
@@ -1487,7 +1496,9 @@ class MctierRepository(private val context: Context) {
             .filter { player ->
                 player.id != state.playerId && player.id !in excludedIds && !player.virtualIp.isNullOrBlank()
             }
-            .map { player -> ChatPeerIdentity(player.id, player.name, player.virtualIp!!.trim()) }
+            .map { player ->
+                ChatPeerIdentity(player.id, player.name, player.virtualIp!!.trim(), player.chatPublicKey)
+            }
             .distinctBy { it.playerId }
             .toList()
     }
@@ -1628,7 +1639,14 @@ class MctierRepository(private val context: Context) {
                 // 信令 playerId 是成员身份的唯一依据。虚拟 IP 在 TUN/DHCP
                 // 收敛前可能为空或暂时重复，不能用于把真实成员从列表中过滤掉。
                 val remotes = message.players.orEmpty().map {
-                    Player(it.playerId, it.playerName, it.virtualIp, it.virtualDomain, it.useDomain ?: false)
+                    Player(
+                        it.playerId,
+                        it.playerName,
+                        it.virtualIp,
+                        it.virtualDomain,
+                        it.useDomain ?: false,
+                        chatPublicKey = it.chatPublicKey,
+                    )
                 }.filter { player -> player.id != selfId }
                 playersSnapshotVersion += 1
                 remotes.forEach { pendingPlayerLeaveJobs.remove(it.id)?.cancel() }
@@ -1674,7 +1692,15 @@ class MctierRepository(private val context: Context) {
                 val alreadyKnown = _state.value.players.any { it.id == id }
                 pendingPlayerLeaveJobs.remove(id)?.cancel()
                 val name = message.playerName ?: L("未知玩家", "Unknown player")
-                _state.update { it.copy(players = mergePlayers(it.players, listOf(Player(id, name, message.virtualIp, message.virtualDomain, message.useDomain ?: false)))) }
+                val joined = Player(
+                    id,
+                    name,
+                    message.virtualIp,
+                    message.virtualDomain,
+                    message.useDomain ?: false,
+                    chatPublicKey = message.chatPublicKey,
+                )
+                _state.update { it.copy(players = mergePlayers(it.players, listOf(joined))) }
                 if (alreadyKnown) {
                     if (id != _state.value.playerId) rtcController.connectToPlayer(id)
                     backfillRemoteShareIps()
@@ -1925,7 +1951,17 @@ class MctierRepository(private val context: Context) {
         existing.forEach { map[it.id] = it }
         incoming.forEach { player ->
             val previous = map[player.id]
-            map[player.id] = if (player.avatarData == null && previous?.avatarData != null) player.copy(avatarData = previous.avatarData) else player
+            // 头像与聊天签名公钥都只在部分事件里出现，缺失时保留上一次学到的值，
+            // 避免 player-joined 之类的精简事件把已知公钥清空导致签名校验失败。
+            var merged = player
+            if (merged.avatarData == null && previous?.avatarData != null) {
+                merged = merged.copy(avatarData = previous.avatarData)
+            }
+            val knownKey = previous?.chatPublicKey
+            if (merged.chatPublicKey.isNullOrBlank() && !knownKey.isNullOrBlank()) {
+                merged = merged.copy(chatPublicKey = knownKey)
+            }
+            map[player.id] = merged
         }
         return map.values.toList()
     }

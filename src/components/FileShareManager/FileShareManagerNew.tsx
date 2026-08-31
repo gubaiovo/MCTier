@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Modal, Button, Input, Switch, message, Checkbox, Progress } from 'antd';
+import { PasswordInput } from '../PasswordInput/PasswordInput';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useAppStore } from '../../stores/appStore';
@@ -1747,7 +1748,7 @@ export const FileShareManagerNew: React.FC = () => {
         width={400}
       >
         <div style={{ marginTop: 16 }}>
-          <Input.Password
+          <PasswordInput
             autoFocus
             value={passwordInput}
             onChange={(e) => setPasswordInput(e.target.value)}
@@ -1887,7 +1888,7 @@ const AddShareDialog: React.FC<AddShareDialogProps> = ({ visible, onClose, onSuc
             <span style={{ marginLeft: 8 }}>{tl('密码保护', 'Password Protection')}</span>
           </label>
           {hasPassword && (
-            <Input.Password
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={tl('输入密码', 'Enter password')}

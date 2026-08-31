@@ -6,7 +6,7 @@
   **虚拟局域网通用组网工具**
 
   <p>
-    <img src="https://img.shields.io/badge/version-2.8.0-blue?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/version-3.0.0-blue?style=flat-square" alt="Version">
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2ea44f?style=flat-square" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/Android-supported-3ddc84?style=flat-square" alt="Android">
     <img src="https://img.shields.io/badge/license-Custom-orange?style=flat-square" alt="License">
@@ -115,16 +115,18 @@ MCTier 基于 EasyTier 与 WebRTC，用来把不同网络环境下的设备组�
 - **邀请信息同步节点**：二维码、邀请链接、最近大厅和收藏大厅会同步并恢复对应的 EasyTier 节点与信令服务器配置，避免跨节点导致组网失败。
 - **连接自动自愈**：桌面端和 Android 端均支持信令断线重连、成员状态二次确认与语音连接自动恢复，降低短暂网络波动造成的离线或听不到声音问题。
 - **连接 / 网络诊断**：聚合成员直连、中继、延迟、丢包，给出整体评分与优化建议；网络诊断还能检测虚拟网卡、防火墙、UDP 端口与安全软件拦截，并支持一键放行防火墙。
+- **共享节点投稿**：可把自己的 EasyTier 节点投稿到公共列表供他人使用，也能在「设置 → 共享节点」中按在线状态与延迟浏览他人投稿并一键保存为自定义节点。投稿时服务器会先探测可达性，失效超过 1 天的节点自动移除；该功能在大厅外也可使用。
 - **私有化部署**：支持自建信令服务，便于掌控连接入口。
 
 ### 沟通与协作
 
-- **实时语音频道**：大厅内可按频道语音，适合协作沟通。
+- **实时语音频道**：大厅内可按频道语音，适合协作沟通。桌面端为**纯原声通话**，不接任何降噪、回声消除或自动增益处理层，试听与实际发出的声音一致。
 - **语音小队**：把成员分到不同小队，只听同队语音，轻松实现分组开黑。
 - **内置变声器**：实时语音变声，内置萝莉音、大叔音等多种音色，开麦聊天更有趣，支持先试听再应用。
 - **大厅聊天室**：支持文字、图片与 Emoji 表情消息。
 - **消息弹幕**：聊天消息以弹幕形式从屏幕顶部飘过，挂后台或玩游戏时也不错过消息；可调字号、速度、透明度、轨道数与颜色（含彩色随机），默认开启。
-- **文件夹共享**：可向同大厅成员共享文件夹，支持下载与传输列表。
+- **文件夹共享**：可向同大厅成员共享文件夹，支持下载与传输列表，并可**自定义下载文件的保存目录**（桌面端在设置中选择目录，Android 端通过系统文件选择器授权）。
+- **个人头像**：双端均可设置个人头像，头像会显示在玩家列表与聊天室中，桌面端的迷你悬浮窗同样生效。
 - **屏幕共享**：使用 WebRTC 查看对方屏幕画面。
 - **远程控制**：基于 WebRTC 远程查看并实时操作对方设备，支持电脑↔手机互控；鼠标移动、左键/右键、长按、拖拽、滚轮、键盘输入、返回/主页/最近等手势一应俱全，并按对方分辨率自动选择横竖屏与最佳窗口尺寸。
 - **房间工具**：内置掷骰子、倒计时与多人协同待办清单，方便跑团、抽签与团队任务安排，倒计时切界面或挂后台也不中断。
@@ -160,6 +162,7 @@ MCTier 基于 EasyTier 与 WebRTC，用来把不同网络环境下的设备组�
 | 平台 | 要求 |
 | --- | --- |
 | Windows | Windows 10/11 64 位，建议 2GB 以上内存 |
+| Linux | Debian 家族发行版（Debian / Ubuntu / Deepin / UOS / Mint），x86_64 |
 | Android | Android 手机或平板，建议 Android 8.0+ |
 | 网络 | 能访问所配置的 EasyTier 节点与 WebRTC 信令服务 |
 
@@ -170,6 +173,7 @@ MCTier 基于 EasyTier 与 WebRTC，用来把不同网络环境下的设备组�
 - Windows 安装包：下载 `MCTier_x.y.z_x64-setup.exe` 后双击安装。
 - Windows 便携版：下载 `MCTier.exe` 后直接运行。
 - Android：下载 `MCTier-Android.apk` 后在手机上安装。
+- Linux（Debian 家族）：构建与打包方式见 [MCTier-Linux/README.md](MCTier-Linux/README.md)。应用本体以普通用户运行，只需为 `easytier-core` 授予一次 `cap_net_admin` 能力；语音、屏幕共享与远程控制在标准 Debian 上暂不可用，逐项状态见该目录的状态矩阵。
 
 ### 创建或加入大厅
 
@@ -195,6 +199,18 @@ MCTier 是通用组网工具，Minecraft 只是其中一个典型使用场景。
 
 如果你想自建 MCTier 信令服务器，请从 MCTier 官网获取 `MCTier信令服务器.zip` 及配套部署文档。本源码仓库只包含桌面端与 Android 客户端源码，不包含官网和信令服务器部署包。
 
+> 自建信令服务器需要一台公网主机。若还没有合适的机器，可以看看下面的赞助商：
+>
+> <a href="https://langlangy.cn/?imctier" target="_blank" rel="noopener">
+>   <picture>
+>     <source media="(prefers-color-scheme: dark)" srcset="public/langlangyun-logo-white.png">
+>     <source media="(prefers-color-scheme: light)" srcset="public/langlangyun-logo-black.png">
+>     <img src="public/langlangyun-logo-black.png" alt="浪浪云" height="34">
+>   </picture>
+> </a>
+>
+> **[浪浪云 BGP 服务器 · 让游戏组网延迟更低更快](https://langlangy.cn/?imctier)**
+
 基本流程：
 
 1. 准备一台 Linux 服务器或局域网内主机。
@@ -217,14 +233,18 @@ docker compose -f docker-compose-http.yml logs -f
 
 ## 开发与构建
 
-### 第一步：获取第三方二进制（首次 clone 后必做）
+### 第一步：准备第三方二进制（首次 clone 后必做）
 
-`src-tauri/src/modules/resource_manager.rs` 通过 `include_bytes!` 在编译期内嵌目标平台的 EasyTier 二进制；Windows 还会内嵌 3 个运行依赖。这些文件受版权与许可限制（尤其是 Npcap 的 `Packet.dll`，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 第 8 节），因此不纳入本仓库。clone 之后必须先运行对应平台的脚本，否则 `cargo build` 会因找不到文件而失败。
+`src-tauri/src/modules/resource_manager.rs` 通过 `include_bytes!` 在编译期内嵌目标平台的 EasyTier 二进制；Windows 还会内嵌 `wintun.dll` 与 `WinDivert64.sys`。这些文件体积较大且受各自许可约束，因此不纳入本仓库。clone 之后必须先运行对应平台的脚本，否则 `cargo build` 会因找不到文件而失败。
 
 Windows x64：
 
 ```powershell
+# 1) 下载可直接再分发的驱动类文件（wintun.dll / WinDivert64.sys）
 .\scripts\fetch-binaries.ps1
+
+# 2) 重建不依赖 Npcap 的 easytier-core.exe / easytier-cli.exe
+.\scripts\build-easytier-npcap-free.ps1
 ```
 
 macOS（自动识别 Intel 或 Apple Silicon，也可显式传入 `x86_64` / `arm64`）：
@@ -233,7 +253,11 @@ macOS（自动识别 Intel 或 Apple Silicon，也可显式传入 `x86_64` / `ar
 ./scripts/fetch-macos-binaries.sh
 ```
 
-脚本从 EasyTier 官方 v2.5.0 Release 下载对应平台压缩包，同时校验压缩包与逐个文件的 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。Windows 已存在且校验通过的文件会被跳过；如需强制重新获取请加 `-Force`。
+第一个脚本从 EasyTier 官方 Release 下载 `easytier-windows-x86_64-v2.5.0.zip`，逐个校验 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。已存在且校验通过的文件会被跳过；如需强制重新获取请加 `-Force`。
+
+第二个脚本单独存在是有原因的：EasyTier 官方构建的 `easytier-core.exe` 在 PE 导入表中**静态导入** Npcap 的 `packet.dll`，而 Npcap 不是开源软件、未经 Nmap Project 书面许可不得随其他软件再分发。该脚本会克隆 EasyTier v2.5.0（同一 commit，不涉及版本升级）、应用 [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) 去掉这个导入，并在构建后解析产物导入表作为硬门槛。需要 `cargo`（MSVC 工具链）、`protoc` 与 `libclang`。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 第 8 节。
+
+macOS 脚本从 EasyTier 官方 v2.5.0 Release 下载对应架构的压缩包，同时校验压缩包与逐个文件的 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。
 
 ### 第二步：构建
 ```bash
@@ -323,11 +347,13 @@ Source: https://github.com/EasyTier/EasyTier
 - [LICENSE-LGPL-3.0.txt](LICENSE-LGPL-3.0.txt) — LGPL-3.0 全文
 - [LICENSE-GPL-3.0.txt](LICENSE-GPL-3.0.txt) — GPL-3.0 全文（LGPL-3.0 以引用方式并入）
 - [patches/easytier-2.6.0-mctier-android.patch](patches/easytier-2.6.0-mctier-android.patch) — Android 端 EasyTier 修改补丁
+- [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) — 移除 Windows 端对 Npcap `Packet.dll` 的静态链接依赖
 - [docs/android/rebuild-with-modified-easytier.md](docs/android/rebuild-with-modified-easytier.md) — 用自行修改的 EasyTier 重新构建 Android 版
 - [licenses/](licenses/) — 各第三方许可证全文（LGPL-3.0、GPL-3.0、GPL-2.0、Apache-2.0、MIT、BSD-3-Clause、Wintun）
 
-`THIRD_PARTY_NOTICES.md` 覆盖 EasyTier、Wintun、WinDivert、Npcap、
+`THIRD_PARTY_NOTICES.md` 覆盖 EasyTier、Wintun、WinDivert、
 LocalVQE / GGML / 模型权重、WebRTC 及各应用级依赖的版本、SHA-256、许可证与修改状态。
+其中第 8 节记录了 Npcap `packet.dll` 依赖的成因与移除过程——本项目已不再包含任何 Npcap 文件。
 
 ### 商标与非官方声明
 

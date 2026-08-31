@@ -80,12 +80,11 @@ test('public Windows artifacts never require redistributing Npcap', () => {
   const resources = read('src-tauri/src/modules/resource_manager.rs');
   const workflow = read('.github/workflows/ci.yml');
 
-  assert.match(cargo, /default\s*=\s*\[\]/);
-  assert.match(cargo, /bundled-npcap\s*=\s*\[\]/);
-  assert.match(resources, /feature = "bundled-npcap"/);
-  assert.match(resources, /System32[\s\S]*Npcap[\s\S]*Packet\.dll/);
-  assert.match(workflow, /NPCAP_REDISTRIBUTION_APPROVED == 'true'/);
-  assert.match(workflow, /--features', 'bundled-npcap'/);
-  assert.match(workflow, /WINDOWS-NPCAP-REQUIREMENT\.txt/);
-  assert.doesNotMatch(workflow, /Refusing to upload a Windows artifact/);
+  assert.doesNotMatch(cargo, /bundled-npcap/);
+  assert.doesNotMatch(resources, /include_bytes!\([^)]*Packet\.dll/);
+  assert.doesNotMatch(resources, /get_packet_dll_path/);
+  assert.doesNotMatch(workflow, /NPCAP_REDISTRIBUTION_APPROVED|--features['"],\s*['"]bundled-npcap/);
+  assert.match(workflow, /build-easytier-npcap-free\.ps1/);
+  assert.match(workflow, /Verify no Npcap file is bundled/);
+  assert.match(workflow, /pnet_datalink-0\.35\.0-no-npcap\.patch/);
 });

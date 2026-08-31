@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -93,6 +94,7 @@ import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Apps
@@ -171,6 +173,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -658,6 +661,16 @@ private fun VersionErrorDialog(alert: top.pmh13.mctier.data.VersionAlert, reposi
                     repository.openUpdateWebsite(onError = { err = it })
                 },
             ) { Text(L("前往官网下载", "Open download website"), color = GrassGreen, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            // 组网已在收到 version-too-old 时断开（handleSignal 里调了 leaveLobby），
+            // 所以关掉弹窗不等于放行——服务器才是权威，旧版本再次尝试仍会被拒。
+            // 但必须留一条退出路径：否则用户在更新之前连设置页都进不去
+            // （例如想改用自建信令服务器），只能强杀应用。
+            TextButton(
+                enabled = progress !in 0..100,
+                onClick = { repository.clearVersionError() },
+            ) { Text(L("稍后处理", "Later"), color = TextPrimary.copy(alpha = 0.6f)) }
         },
     )
 }
@@ -3757,6 +3770,8 @@ private fun SettingsPanel(state: MctierUiState, repository: MctierRepository) {
         CommunityNodesSection(state, repository)
         Spacer(Modifier.height(12.dp))
         MctierField(settings.signalingServer, { onChange(settings.copy(signalingServer = it)) }, L("信令服务器", "Signaling server"))
+        Spacer(Modifier.height(10.dp))
+        SponsorAdCard()
         Spacer(Modifier.height(12.dp))
         SwitchRow(L("使用虚拟域名", "Use virtual domain"), settings.useDomain) { onChange(settings.copy(useDomain = it)) }
         if (settings.useDomain) {
@@ -4446,6 +4461,85 @@ private fun QuickAccess(label: String, icon: ImageVector, modifier: Modifier = M
     }
 }
 
+/**
+ * 赞助商推广位（浪浪云）。
+ *
+ * 放在信令服务器配置附近：自建信令服务器本来就需要一台公网主机，
+ * 在这里出现比塞在无关分区更贴合用户当下的意图。
+ *
+ * Logo 按当前主题选图——浅色主题用黑标、深色主题用白标。两张图已裁切成
+ * 同一内容尺寸，因此固定高度后视觉大小一致，切换主题不会跳动。
+ * 判定用 TextPrimary 的亮度而不是再读一次设置：applyAppTheme 已经把主题
+ * 落到这些颜色上，跟着它走就不会与实际渲染的主题不一致。
+ */
+@Composable
+private fun SponsorAdCard() {
+    val ctx = LocalContext.current
+    val isLightTheme = TextPrimary.luminance() < 0.5f
+    val logoRes = if (isLightTheme) R.drawable.langlangyun_logo_black else R.drawable.langlangyun_logo_white
+    Box(Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable {
+                    runCatching {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://langlangy.cn/?imctier")))
+                    }
+                },
+            colors = CardDefaults.cardColors(containerColor = PanelHigh.copy(alpha = 0.55f)),
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, GrassGreen.copy(alpha = 0.28f)),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Image(
+                    painterResource(logoRes),
+                    L("浪浪云", "Langlangyun"),
+                    modifier = Modifier.height(26.dp).widthIn(max = 92.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        L("浪浪云 BGP 服务器", "Langlangyun BGP Servers"),
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        L("让游戏组网延迟更低更快", "Lower latency and faster game networking"),
+                        color = TextPrimary.copy(alpha = 0.55f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    Icons.Rounded.OpenInNew,
+                    null,
+                    tint = TextPrimary.copy(alpha = 0.35f),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        // 「赞助商」标识：明确这是推广位，不伪装成功能入口。
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = (-10).dp, y = (-6).dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(GrassGreen.copy(alpha = 0.18f))
+                .padding(horizontal = 7.dp, vertical = 1.dp),
+        ) {
+            Text(L("赞助商", "Sponsor"), fontSize = 9.sp, color = GrassGreen)
+        }
+    }
+}
+
 @Composable
 private fun SectionCard(padding: Dp = 18.dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Card(
@@ -5101,6 +5195,8 @@ private fun isValidLobbyName(n: String): Boolean {
 
 private fun isValidLobbyPassword(p: String): Boolean {
     val t = p.trim()
+    // 留空表示无密码大厅，与输入框文案及 LobbyInviteCodec.isValidLobbyPassword 保持一致（issue #42）。
+    if (t.isEmpty()) return true
     if (t.length < 8 || t.length > 32) return false
     val hasLetter = t.any { it in 'a'..'z' || it in 'A'..'Z' }
     val hasDigit = t.any { it in '0'..'9' }

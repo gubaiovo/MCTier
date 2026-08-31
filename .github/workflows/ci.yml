@@ -202,6 +202,26 @@ jobs:
       - name: Fetch pinned Windows runtime binaries
         run: .\scripts\fetch-binaries.ps1
 
+      - name: Stage compile-only EasyTier placeholders
+        # easytier-core/cli 不再从官方发布包获取：官方构建在 PE 导入表中静态导入
+        # Npcap 的 packet.dll，而 Npcap 不得随本项目再分发（见 THIRD_PARTY_NOTICES.md §8）。
+        # 真实产物由 scripts/build-easytier-npcap-free.ps1 重建，但那需要克隆并完整编译
+        # 一遍 EasyTier（数分钟以上），对每次 CI 而言过于昂贵。
+        #
+        # 本任务只验证「代码能否编译、单元测试是否通过」，全程不执行这两个二进制，
+        # 因此放占位文件让 include_bytes! 有东西可读即可。占位内容刻意是可识别的文本：
+        # 一旦被误用于发行构建，EasyTier 会立即以明显的方式失败，而不是悄悄产出坏包。
+        run: |
+          $dir = 'src-tauri/resources/binaries'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          foreach ($name in @('easytier-core.exe', 'easytier-cli.exe')) {
+            $path = Join-Path $dir $name
+            if (Test-Path -LiteralPath $path) { continue }
+            Set-Content -LiteralPath $path -Encoding ascii -NoNewline -Value 'MCTIER-CI-PLACEHOLDER-NOT-A-REAL-BINARY'
+            Write-Host "staged placeholder: $name"
+          }
+        shell: pwsh
+
       - name: Rust format check
         working-directory: src-tauri
         run: cargo fmt --all -- --check
@@ -310,6 +330,21 @@ jobs:
             }
           done
           test -f patches/easytier-2.6.0-mctier-android.patch
+          test -f patches/pnet_datalink-0.35.0-no-npcap.patch
+
+      - name: Verify no Npcap file is bundled
+        run: |
+          set -euo pipefail
+          for file in Packet.dll Packet.lib; do
+            test ! -e "src-tauri/resources/binaries/$file" || {
+              echo "$file must not be bundled" >&2
+              exit 1
+            }
+          done
+          ! grep -rn 'include_bytes!.*Packet\.dll' src-tauri/src || {
+            echo 'Packet.dll is still embedded' >&2
+            exit 1
+          }
 
   dependency-audit:
     name: Rust dependency audit
@@ -400,6 +435,38 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: .\scripts\fetch-binaries.ps1
+
+      - name: Cache rebuilt Windows EasyTier binaries
+        if: runner.os == 'Windows'
+        id: windows-easytier-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            src-tauri/resources/binaries/easytier-core.exe
+            src-tauri/resources/binaries/easytier-cli.exe
+            src-tauri/resources/binaries/easytier-core-x86_64-pc-windows-msvc.exe
+            src-tauri/resources/binaries/easytier-cli-x86_64-pc-windows-msvc.exe
+          key: mctier-easytier-windows-v2.5.0-${{ hashFiles('scripts/build-easytier-npcap-free.ps1', 'patches/pnet_datalink-0.35.0-no-npcap.patch') }}
+
+      - name: Build Npcap-free Windows EasyTier binaries
+        if: runner.os == 'Windows' && steps.windows-easytier-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command protoc -ErrorAction SilentlyContinue)) {
+            choco install protoc --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "protoc installation failed with exit code $LASTEXITCODE" }
+            $env:PATH = "$env:ChocolateyInstall\bin;$env:PATH"
+            "$env:ChocolateyInstall\bin" >> $env:GITHUB_PATH
+          }
+
+          $libclang = 'C:\Program Files\LLVM\bin\libclang.dll'
+          if (-not (Test-Path -LiteralPath $libclang)) {
+            throw "GitHub runner LLVM installation is missing $libclang"
+          }
+          $env:LIBCLANG_PATH = [IO.Path]::GetDirectoryName($libclang)
+          "LIBCLANG_PATH=$env:LIBCLANG_PATH" >> $env:GITHUB_ENV
+
+          .\scripts\build-easytier-npcap-free.ps1
 
       - name: Fetch pinned macOS runtime binaries
         if: runner.os == 'macOS'
@@ -499,12 +566,8 @@ jobs:
         shell: pwsh
         env:
           TARGET: ${{ matrix.target }}
-          BUNDLE_NPCAP: ${{ vars.NPCAP_REDISTRIBUTION_APPROVED == 'true' }}
         run: |
           $arguments = @('run', 'tauri', 'build', '--', '--target', $env:TARGET, '--bundles', 'nsis', '--ci')
-          if ($env:BUNDLE_NPCAP -eq 'true') {
-            $arguments += @('--features', 'bundled-npcap')
-          }
           if ($env:MCTIER_TAURI_SIGNING_CONFIG) {
             $arguments += @('--config', $env:MCTIER_TAURI_SIGNING_CONFIG)
           }
@@ -583,13 +646,6 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" \
               -maxdepth 1 -name '*.exe' -type f -exec cp '{}' staging/ \;
-            if [[ "${{ vars.NPCAP_REDISTRIBUTION_APPROVED }}" != "true" ]]; then
-              printf '%s\n' \
-                'This public test package does not redistribute Npcap Packet.dll.' \
-                'Install official Npcap from https://npcap.com before creating a lobby.' \
-                'Enabling WinPcap API-compatible Mode is recommended.' \
-                >staging/WINDOWS-NPCAP-REQUIREMENT.txt
-            fi
           else
             find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" \
               -maxdepth 1 -name '*.dmg' -type f -exec cp '{}' staging/ \;

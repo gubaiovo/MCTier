@@ -80,8 +80,8 @@ Wayland 上同方案）。logind 对活动会话用户的 `/dev/uinput` 有 ACL 
 | 开机自启 | 🔄 已实现 | XDG autostart `.desktop`；未实机验证 |
 | 远程控制（主控端） | 🔄 已实现 | 依赖 WebRTC，见下方已知限制 |
 | 远程控制（被控端注入） | 🔄 已实现 | uinput 三设备（触摸绝对定位 / 鼠标按键滚轮 / 键盘）；未实机验证 |
-| 语音通话 | ❌ 发行版阻塞 | 见下方已知限制 |
-| 屏幕共享 | ❌ 发行版阻塞 | 同上 |
+| 语音通话 | ❌ 两处阻塞 | ①发行版 WebKit 没开 WebRTC ②自建引擎后仍遇 GStreamer 死锁，见下方 |
+| 屏幕共享 | ❌ 发行版阻塞 | 同 ①；②尚未单独验证（被 ① / ② 阻塞在前） |
 | 杀软检测 | ➖ 不适用 | Windows 语义，Linux 返回空列表 |
 | 文本注入（穿越输入法） | ❌ 不支持 | uinput 只能发按键码，明确降级 |
 
@@ -110,12 +110,42 @@ $MCTIER_WEBKIT_LIB_DIR
 在 Debian 13 (trixie) + KDE Plasma 6 Wayland 真机上的实测，我们未独立复验；
 但结论可用一行控制台命令自查，成本很低。
 
+**但自建引擎并不等于语音就能用了** —— 见下一小节，这是两个独立的阻塞点。
+
+### 自建 WebRTC 引擎后：开麦触发 GStreamer 死锁
+
+fork 作者按上述方式自建了 `ENABLE_WEB_RTC=ON` 的 WebKitGTK 并确认加载成功
+（`/proc/<pid>/maps` 可见），此时组网 / 大厅 / 聊天 / 图片 / 文件夹共享均正常，
+但**开麦即整页卡死，100% 复现**。他抓到了双线程栈（归档在其 fork 的
+`MCTier-Linux/verification/`）：WebProcess 内两个线程都停在 `gst_pad_push_event`
+并互相等对方持有的锁，属于 GStreamer 核心的 ABBA 死锁；同一时刻麦克风采集线程
+（`gst_audio_ring_buffer_read`）与音频播放线程都还在正常跑——**音频数据面是活的，
+事件面互相等锁**。GStreamer 1.26.2。
+
+这一条**不在应用层能修的范围内**，需要 GStreamer / WebKit 上游处理。
+
+不过有一个变量值得先排除：MCTier 此前即使选「原声」，麦克风流也会穿过一张 WebAudio 图
+（`MediaStreamSource → Gain → MediaStreamDestination`），也就是要多跨一次
+WebAudio↔GStreamer 桥接，而死锁栈正好卡在这段管线上。该多余的处理层已经去掉
+（「原声」现在直接发送原始麦克风轨道），因此复测时请按以下顺序拆分：
+
+1. 音色保持默认「原声」开麦 —— 若不再卡死，说明死锁与 WebAudio 桥接相关；
+2. 换一个变声音色（会重新接入 WebAudio 图）再开麦 —— 若此时卡死，即可定位到桥接段；
+3. 若第 1 步仍然 100% 卡死，则死锁与我们是否接 WebAudio 无关，应直接报上游。
+
 ### 输入法在密码框吞键
 
 fcitx5 / ibus 的 GTK IM 模块在 WebKitGTK 的 `<input type="password">` 上会吞掉按键，
-表现为"密码框打不出字"。`run-linux.sh` 默认清空 `GTK_IM_MODULE`，让 GTK 走
-Wayland 的 text-input-v3，普通输入框的中文输入不受影响。若你的环境不受此影响，
-可设 `MCTIER_KEEP_IM_MODULE=1` 跳过。
+表现为"密码框一个字都打不出来"。这里做了两层处理：
+
+1. `run-linux.sh` 默认清空 `GTK_IM_MODULE`，让 GTK 走 Wayland 的 text-input-v3，
+   普通输入框的中文输入不受影响。若你的环境不受此影响，可设 `MCTIER_KEEP_IM_MODULE=1` 跳过。
+2. 仅靠上面这条**不够**——fork 作者在 Debian 13 + KDE Plasma 6 Wayland 上实测同款写法仍会复现。
+   因此前端在 Linux 下不再使用原生密码框，改用普通文本框 + CSS `-webkit-text-security`
+   遮罩并配显示/隐藏切换（`src/components/PasswordInput/`），从引擎层绕开这条冲突路径。
+   Windows 继续走原生密码框，保留浏览器自带的密码语义。
+
+第 2 条是兜底，所以即使第 1 条被 `MCTIER_KEEP_IM_MODULE=1` 关掉，密码也仍然能输入。
 
 ### 透明窗口在部分核显驱动上显示异常
 

@@ -10,8 +10,16 @@ const lobbyForm = fs.readFileSync(
   new URL('../src/components/LobbyForm/LobbyForm.tsx', import.meta.url),
   'utf8'
 );
-const lobbyCss = fs.readFileSync(
-  new URL('../src/components/LobbyForm/LobbyForm.css', import.meta.url),
+const passwordInput = fs.readFileSync(
+  new URL('../src/components/PasswordInput/PasswordInput.tsx', import.meta.url),
+  'utf8'
+);
+const passwordPolicy = fs.readFileSync(
+  new URL('../src/utils/passwordInputPolicy.ts', import.meta.url),
+  'utf8'
+);
+const passwordCss = fs.readFileSync(
+  new URL('../src/components/PasswordInput/PasswordInput.css', import.meta.url),
   'utf8'
 );
 const windowDrag = fs.readFileSync(new URL('../src/utils/windowDrag.ts', import.meta.url), 'utf8');
@@ -169,11 +177,11 @@ test('EasyTier IP parsing ignores unrelated private addresses from peer logs', (
 });
 
 test('macOS password editing avoids a native secure-field focus transition', () => {
-  assert.match(lobbyForm, /className={`lobby-password-native/);
-  assert.match(lobbyForm, /type="text"/);
-  assert.match(lobbyCss, /-webkit-text-security: disc/);
-  assert.match(lobbyCss, /html\[data-theme='light'\] \.lobby-password-native/);
-  assert.match(lobbyCss, /-webkit-text-fill-color: #18202b !important/);
+  assert.match(lobbyForm, /<PasswordInput/);
+  assert.match(passwordPolicy, /isMacUserAgent\(userAgent\)/);
+  assert.match(passwordInput, /type="text"/);
+  assert.match(passwordInput, /data-mctier-masked="true"/);
+  assert.match(passwordCss, /-webkit-text-security: disc/);
 });
 
 test('frameless windows use the native Tauri drag API', () => {

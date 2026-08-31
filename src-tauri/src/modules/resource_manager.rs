@@ -5,15 +5,25 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 // 将二进制文件嵌入到可执行文件中。
+//
+// Windows：easytier-core.exe / easytier-cli.exe，外加 2 个驱动类文件
+//   （wintun.dll / WinDivert64.sys）。
+// macOS：只需对应架构的 easytier-core / easytier-cli。
+// Linux：只需 easytier-core / easytier-cli —— 虚拟网卡由内核 TUN
+//   （/dev/net/tun）提供，不存在与 wintun/WinDivert 对应的用户态驱动，
+//   因此那 2 个文件在 Linux 上既不内嵌也不提取。
+//
+// 不再内嵌 Npcap 的 Packet.dll：它此前是 easytier-core.exe 的启动期硬依赖
+// （PE 导入表静态导入，缺失即 0xC0000135），而该依赖并非功能需要，只是
+// pnet_datalink 无条件 #[link(name = "Packet")] 的连带结果。现随 MCTier 重建的
+// EasyTier 一并消除，详见 patches/pnet_datalink-0.35.0-no-npcap.patch 与
+// THIRD_PARTY_NOTICES.md §8。
 #[cfg(windows)]
 #[allow(dead_code)]
 static EASYTIER_CORE_BYTES: &[u8] = include_bytes!("../../resources/binaries/easytier-core.exe");
 #[cfg(windows)]
 #[allow(dead_code)]
 static EASYTIER_CLI_BYTES: &[u8] = include_bytes!("../../resources/binaries/easytier-cli.exe");
-#[cfg(all(windows, feature = "bundled-npcap"))]
-#[allow(dead_code)]
-static PACKET_DLL_BYTES: &[u8] = include_bytes!("../../resources/binaries/Packet.dll");
 #[cfg(windows)]
 #[allow(dead_code)]
 static WINTUN_DLL_BYTES: &[u8] = include_bytes!("../../resources/binaries/wintun.dll");
@@ -242,56 +252,6 @@ impl ResourceManager {
         ))
     }
 
-    /// 获取 Packet.dll 的路径。
-    ///
-    /// 公开构建不会内嵌 Npcap 的专有 DLL，而是使用用户通过官方安装器安装的副本。
-    #[cfg(all(target_os = "windows", feature = "bundled-npcap"))]
-    pub fn get_packet_dll_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
-        #[cfg(debug_assertions)]
-        {
-            if let Some(path) = Self::find_debug_binary(app_handle, "Packet.dll") {
-                return Ok(path);
-            }
-            Self::extract_binary(app_handle, "Packet.dll", PACKET_DLL_BYTES)
-        }
-
-        #[cfg(not(debug_assertions))]
-        {
-            Self::extract_binary(app_handle, "Packet.dll", PACKET_DLL_BYTES)
-        }
-    }
-
-    #[cfg(all(target_os = "windows", not(feature = "bundled-npcap")))]
-    pub fn get_packet_dll_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
-        let windows_dir = std::env::var_os("WINDIR")
-            .map(PathBuf::from)
-            .ok_or_else(|| {
-                AppError::ConfigError(
-                    "无法定位 Windows 系统目录；请从 https://npcap.com 安装 Npcap 后重试"
-                        .to_string(),
-                )
-            })?;
-
-        Self::find_installed_packet_dll(&windows_dir).ok_or_else(|| {
-            AppError::ConfigError(
-                "未找到 Npcap 的 Packet.dll。此公开构建不内嵌 Npcap；请从 https://npcap.com 安装官方 Npcap（建议启用 WinPcap API-compatible Mode）后重试"
-                    .to_string(),
-            )
-        })
-    }
-
-    #[cfg(all(target_os = "windows", not(feature = "bundled-npcap")))]
-    fn find_installed_packet_dll(windows_dir: &std::path::Path) -> Option<PathBuf> {
-        [
-            windows_dir
-                .join("System32")
-                .join("Npcap")
-                .join("Packet.dll"),
-            windows_dir.join("System32").join("Packet.dll"),
-        ]
-        .into_iter()
-        .find(|path| path.is_file())
-    }
     /// 获取 wintun.dll 的路径（仅 Windows；Linux 走内核 TUN，无此依赖）
     #[cfg(windows)]
     pub fn get_wintun_dll_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {

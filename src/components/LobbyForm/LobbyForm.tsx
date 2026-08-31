@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Form, Input, Button, Space, Typography, Modal, Switch, App as AntdApp } from 'antd';
+import { PasswordInput } from '../PasswordInput/PasswordInput';
 import { invoke } from '@tauri-apps/api/core';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { useAppStore } from '../../stores';
@@ -52,65 +53,6 @@ interface ServerNodeSelectProps {
   ariaLabel: string;
   onChange?: (value: string) => void;
 }
-
-interface LobbyPasswordInputProps extends Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  'size' | 'type' | 'value'
-> {
-  value?: string;
-}
-
-/**
- * A stable password editor for desktop WebViews.
- *
- * On macOS, changing an input into a native secure text field can leave
- * WKWebView's first-responder state stuck until the visibility control is
- * clicked. Keeping the DOM input as `type=text` and masking it with WebKit's
- * text-security style avoids that focus bug without changing the form value.
- */
-const LobbyPasswordInput = React.forwardRef<HTMLInputElement, LobbyPasswordInputProps>(
-  ({ value = '', disabled, className, ...inputProps }, ref) => {
-    const [visible, setVisible] = useState(false);
-
-    return (
-      <div className={`lobby-password-control${disabled ? ' is-disabled' : ''}`}>
-        <input
-          {...inputProps}
-          ref={ref}
-          type="text"
-          value={value ?? ''}
-          disabled={disabled}
-          className={`lobby-password-native${visible ? ' is-visible' : ' is-masked'}${className ? ` ${className}` : ''}`}
-          aria-label={inputProps['aria-label'] || tl('大厅密码', 'Lobby password')}
-        />
-        <button
-          type="button"
-          className="password-visibility-button"
-          aria-label={visible ? tl('隐藏密码', 'Hide password') : tl('显示密码', 'Show password')}
-          aria-pressed={visible}
-          disabled={disabled}
-          data-tauri-no-drag
-          onMouseDown={(event) => event.preventDefault()}
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={() => setVisible((current) => !current)}
-        >
-          {visible ? (
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.3A10.8 10.8 0 0 1 12 4c5.2 0 8.7 4.6 9.6 6-.4.7-1.5 2.2-3 3.5M6.2 6.2C4.3 7.4 3 9.3 2.4 10.3c.9 1.4 4.4 6 9.6 6 1.2 0 2.3-.2 3.3-.6" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M2.4 12S6 6.5 12 6.5 21.6 12 21.6 12 18 17.5 12 17.5 2.4 12 2.4 12Z" />
-              <circle cx="12" cy="12" r="2.5" />
-            </svg>
-          )}
-        </button>
-      </div>
-    );
-  }
-);
-
-LobbyPasswordInput.displayName = 'LobbyPasswordInput';
 
 const ServerNodeSelect: React.FC<ServerNodeSelectProps> = ({
   value,
@@ -636,7 +578,6 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   // 语言切换时重算服务器节点下拉的标签
   useEffect(() => {
     setServerNodes(getServerNodes(customNodes));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [i18n.language, customNodes]);
 
   // 一键随机生成大厅名称和密码
@@ -1689,11 +1630,12 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 },
               ]}
             >
-              <LobbyPasswordInput
+              <PasswordInput
                 placeholder={tl(
                   '留空创建无密码大厅，或输入 8-32 位密码',
                   'Leave blank for no password, or enter 8-32 characters'
                 )}
+                size="large"
                 disabled={loading}
                 autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
                 autoCapitalize="none"

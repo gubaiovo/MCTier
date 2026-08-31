@@ -6,7 +6,7 @@
   **A universal virtual-LAN networking tool**
 
   <p>
-    <img src="https://img.shields.io/badge/version-2.8.0-blue?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/version-3.0.0-blue?style=flat-square" alt="Version">
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2ea44f?style=flat-square" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/Android-supported-3ddc84?style=flat-square" alt="Android">
     <img src="https://img.shields.io/badge/license-Custom-orange?style=flat-square" alt="License">
@@ -116,16 +116,18 @@ Screenshots are grouped by desktop and mobile and laid out compactly to avoid an
 - **Node settings in invites**: QR codes, invite links, recent lobbies and favorite lobbies carry and restore the matching EasyTier node and signaling-server settings, preventing cross-node join failures.
 - **Self-healing connections**: Both desktop and Android support signaling reconnects, secondary member-state confirmation and automatic voice-connection recovery to tolerate short network interruptions.
 - **Connection / network diagnostics**: Aggregate members' direct/relay status, latency and packet loss into a score with tuning tips; network diagnostics can also check the virtual adapter, firewall, UDP ports and security-software blocking, with one-click firewall allow.
+- **Community node submissions**: Submit your own EasyTier node to the public list for others to use, and browse submissions under "Settings → Community Nodes" sorted by online status and latency, saving any of them as a custom node in one click. The server probes reachability before accepting a submission, and nodes that stay unreachable for more than a day are removed automatically. This works outside a lobby too.
 - **Self-hosting**: Run your own signaling server to control the connection entry.
 
 ### Communication & Collaboration
 
-- **Real-time voice channels**: Voice by channel within a lobby, ideal for collaboration.
+- **Real-time voice channels**: Voice by channel within a lobby, ideal for collaboration. Desktop voice is **fully unprocessed**: no noise suppression, echo cancellation or automatic gain control sits in the path, so the preview matches exactly what other members hear.
 - **Voice squads**: Split members into squads so you only hear teammates in your squad — easy grouped voice chat.
 - **Built-in voice changer**: Real-time voice changing with presets like loli and uncle voices, making mic chat more fun; preview before applying.
 - **Lobby chat room**: Supports text, image and emoji messages.
 - **Message danmaku**: Chat messages float across the top of the screen as bullets, so you never miss them while in the background or gaming; adjustable size, speed, opacity, tracks and color (including random rainbow), enabled by default.
-- **Folder sharing**: Share folders with lobby members, with download and transfer lists.
+- **Folder sharing**: Share folders with lobby members, with download and transfer lists, and a **customizable download directory** (pick a folder in desktop settings; Android grants a directory through the system file picker).
+- **Personal avatars**: Both platforms can set a personal avatar, shown in the player list and chat room, and in the desktop mini overlay as well.
 - **Screen sharing**: View another member's screen via WebRTC.
 - **Remote control**: Remotely view and operate another device in real time via WebRTC, supporting PC↔phone control in both directions; mouse move, left/right click, long-press, drag, wheel, keyboard input, and back/home/recents gestures are all included, with automatic landscape/portrait and best window size based on the remote resolution.
 - **Room tools**: Built-in dice roller, countdown timer and a shared multi-user to-do list — great for tabletop games, draws and team task planning; the countdown keeps running even when you switch views or run in the background.
@@ -145,7 +147,6 @@ Screenshots are grouped by desktop and mobile and laid out compactly to avoid an
 
 - **Minecraft world auto-discovery**: Scan Minecraft worlds opened by lobby members (MOTD/version/players/latency) and auto-inject them into your local LAN list to join without typing an IP.
 - **Game quick connect**: Built-in port presets for common multiplayer games, auto-generating a "virtual IP:port" direct address to copy in one click.
-- **Minecraft helper**: Detect the Minecraft install path and version, provide an illustrated LAN multiplayer guide, and automatically disable LAN online-mode verification for mainstream launchers.
 
 ### Advanced & More
 
@@ -162,6 +163,7 @@ Screenshots are grouped by desktop and mobile and laid out compactly to avoid an
 | Platform | Requirements |
 | --- | --- |
 | Windows | Windows 10/11 64-bit, 2GB+ RAM recommended |
+| Linux | Debian-family distributions (Debian / Ubuntu / Deepin / UOS / Mint), x86_64 |
 | Android | Android phone or tablet, Android 8.0+ recommended |
 | Network | Able to reach the configured EasyTier node and WebRTC signaling server |
 
@@ -172,6 +174,7 @@ Download the latest build from [GitHub Releases](https://github.com/pmh1314520/M
 - Windows Installer: download `MCTier_x.y.z_x64-setup.exe` and double-click to install.
 - Windows Portable: download `MCTier.exe` and run it directly.
 - Android: download `MCTier-Android.apk` and install it on your phone.
+- Linux (Debian family): see [MCTier-Linux/README.md](MCTier-Linux/README.md) for build and packaging steps. The app itself runs as a normal user and only needs `cap_net_admin` granted once to `easytier-core`; voice, screen sharing and remote control are not yet usable on stock Debian — see the per-feature status matrix in that directory.
 
 ### Create or Join a Lobby
 
@@ -197,6 +200,18 @@ If virtual domains are enabled, you can also connect with an address like `membe
 
 If you want to host your own MCTier signaling server, download `MCTier信令服务器.zip` and the deployment documentation from the official MCTier website. This source repository contains the desktop and Android client source code, not the website or signaling-server deployment package.
 
+> Self-hosting the signaling server needs a host with a public IP. If you do not have one yet, take a look at our sponsor:
+>
+> <a href="https://langlangy.cn/?imctier" target="_blank" rel="noopener">
+>   <picture>
+>     <source media="(prefers-color-scheme: dark)" srcset="public/langlangyun-logo-white.png">
+>     <source media="(prefers-color-scheme: light)" srcset="public/langlangyun-logo-black.png">
+>     <img src="public/langlangyun-logo-black.png" alt="Langlangyun" height="34">
+>   </picture>
+> </a>
+>
+> **[Langlangyun BGP servers — lower latency and faster game networking](https://langlangy.cn/?imctier)**
+
 Basic flow:
 
 1. Prepare a Linux server or a host on your LAN.
@@ -219,14 +234,18 @@ docker compose -f docker-compose-http.yml logs -f
 
 ## Development & Build
 
-### Step 1: Fetch third-party binaries (required after the first clone)
+### Step 1: Prepare third-party binaries (required after the first clone)
 
-`src-tauri/src/modules/resource_manager.rs` embeds the target platform's EasyTier binaries at compile time; Windows also embeds three runtime dependencies. Those files are subject to copyright and licensing restrictions (notably Npcap's `Packet.dll`, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8), so they are not tracked in this repository. After cloning, run the script for your platform or `cargo build` will fail because the files are missing.
+`src-tauri/src/modules/resource_manager.rs` embeds the target platform's EasyTier binaries at compile time; Windows also embeds `wintun.dll` and `WinDivert64.sys`. These files are large and subject to their own licenses, so they are not tracked in this repository. After cloning, run the script for your platform or `cargo build` will fail because the files are missing.
 
 Windows x64:
 
 ```powershell
+# 1) Download the freely redistributable driver files (wintun.dll / WinDivert64.sys)
 .\scripts\fetch-binaries.ps1
+
+# 2) Rebuild easytier-core.exe / easytier-cli.exe without the Npcap dependency
+.\scripts\build-easytier-npcap-free.ps1
 ```
 
 macOS (auto-detects Intel or Apple Silicon; `x86_64` / `arm64` may be passed explicitly):
@@ -235,7 +254,11 @@ macOS (auto-detects Intel or Apple Silicon; `x86_64` / `arm64` may be passed exp
 ./scripts/fetch-macos-binaries.sh
 ```
 
-The scripts download the matching archive from the official EasyTier v2.5.0 release, verify the archive and file SHA-256 values (aborting on any mismatch), then place the binaries in `src-tauri/resources/binaries/`. Existing Windows files that pass verification are skipped; pass `-Force` to re-fetch them.
+The first script downloads `easytier-windows-x86_64-v2.5.0.zip` from the official EasyTier release, verifies the SHA-256 of every file (aborting on any mismatch), then places them into `src-tauri/resources/binaries/`. Files that already exist and pass verification are skipped; pass `-Force` to re-fetch.
+
+The second script exists for a specific reason: the official `easytier-core.exe` build **statically imports** Npcap's `packet.dll`, and Npcap is not open source software — it may not be redistributed with other software without written permission from the Nmap Project. This script clones EasyTier v2.5.0 (the same commit, so no version bump), applies [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) to drop that import, and then parses the resulting PE import table as a hard gate. It requires `cargo` (MSVC toolchain), `protoc` and `libclang`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8.
+
+The macOS script downloads the archive for the matching architecture from the official EasyTier v2.5.0 release, verifies both the archive and per-file SHA-256 values (aborting on any mismatch), and places the binaries in `src-tauri/resources/binaries/`.
 
 ### Step 2: Build
 ```bash
@@ -329,12 +352,14 @@ Related files:
 - [LICENSE-LGPL-3.0.txt](LICENSE-LGPL-3.0.txt) — full LGPL-3.0 text
 - [LICENSE-GPL-3.0.txt](LICENSE-GPL-3.0.txt) — full GPL-3.0 text (incorporated by reference into LGPL-3.0)
 - [patches/easytier-2.6.0-mctier-android.patch](patches/easytier-2.6.0-mctier-android.patch) — EasyTier modifications for Android
+- [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) — removes the static Npcap `Packet.dll` link dependency on Windows
 - [docs/android/rebuild-with-modified-easytier.md](docs/android/rebuild-with-modified-easytier.md) — rebuild the Android app with your own modified EasyTier
 - [licenses/](licenses/) — full third-party license texts (LGPL-3.0, GPL-3.0, GPL-2.0, Apache-2.0, MIT, BSD-3-Clause, Wintun)
 
 `THIRD_PARTY_NOTICES.md` covers versions, SHA-256 hashes, licenses and modification status
-for EasyTier, Wintun, WinDivert, Npcap, Javassist, LocalVQE / GGML / model weights, WebRTC
-and the application-level dependencies.
+for EasyTier, Wintun, WinDivert, LocalVQE / GGML / model weights, WebRTC
+and the application-level dependencies. Section 8 documents the cause and removal of the
+Npcap `packet.dll` dependency — this project no longer ships any Npcap file.
 
 ### Trademarks and Non-Affiliation
 
