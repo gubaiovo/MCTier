@@ -702,6 +702,15 @@ jobs:
           test -f "$apk"
           "$build_tools/apksigner" verify --verbose --print-certs "$apk"
           "$build_tools/aapt" dump badging "$apk" | grep -q "package: name='top.pmh13.mctier'"
+          manifest_tree="$("$build_tools/aapt" dump xmltree "$apk" AndroidManifest.xml)"
+          grep -q 'usesCleartextTraffic.*0xffffffff' <<<"$manifest_tree"
+          network_security_tree="$("$build_tools/aapt" dump xmltree "$apk" res/xml/network_security_config.xml)"
+          grep -q 'E: base-config' <<<"$network_security_tree"
+          grep -q 'cleartextTrafficPermitted.*0xffffffff' <<<"$network_security_tree"
+          if grep -q 'E: domain-config' <<<"$network_security_tree"; then
+            echo 'Packaged network security config must not restrict runtime private signaling domains.' >&2
+            exit 1
+          fi
           unzip -l "$apk" | grep -q 'lib/arm64-v8a/libeasytier_android_jni.so'
           unzip -l "$apk" | grep -q 'assets/THIRD_PARTY_NOTICES.md'
 
@@ -716,7 +725,7 @@ jobs:
               staging/MCTier-Android-arm64-v8a.aab
           else
             cp MCTier-Android/app/build/outputs/apk/debug/app-debug.apk \
-              staging/MCTier-Android-arm64-v8a-debug.apk
+              "staging/MCTier-Android-arm64-v8a-${{ needs.metadata.outputs.channel }}-debug.apk"
           fi
 
       - name: Upload Android packages

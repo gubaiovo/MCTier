@@ -995,7 +995,13 @@ private fun StatusCard(state: MctierUiState) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(label, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Text(state.error ?: state.settings.signalingServer, fontSize = 12.sp, color = TextPrimary.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    state.error ?: state.lobby?.signalingServer ?: state.settings.signalingServer,
+                    fontSize = 12.sp,
+                    color = TextPrimary.copy(alpha = 0.5f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -331,7 +331,7 @@ class MctierRepository(private val context: Context) {
                 // 顶部"重连中"提示：在大厅内且信令断开时显示
                 reconnectNoticeJob?.cancel()
                 if (connected) {
-                    _state.update { it.copy(reconnecting = false) }
+                    _state.update { it.copy(error = null, reconnecting = false) }
                 } else if (_state.value.state == AppConnectionState.InLobby) {
                     invalidatePendingRemoteControlAccept()
                     remoteControlController?.handleSignalingDisconnected()

@@ -32,7 +32,7 @@ test('Android manifest keeps non-entry components private and supports runtime p
 
 test('network security supports user-provided cleartext WebSocket endpoints', () => {
   assert.match(networkSecurity, /<base-config\s+cleartextTrafficPermitted="true"\s*\/>/);
-  assert.match(networkSecurity, /<domain-config\s+cleartextTrafficPermitted="true">/);
+  assert.doesNotMatch(networkSecurity, /<domain-config/);
   assert.doesNotMatch(networkSecurity, /floatawa\.top/);
   assert.match(inviteCodec, /SignalingSchemes\s*=\s*setOf\("ws",\s*"wss"\)/);
   assert.match(inviteCodec, /uri\.userInfo\s*==\s*null/);
