@@ -160,12 +160,14 @@ try {
     Copy-Item -Recurse -Path (Join-Path $crateDir "pnet_datalink-$PnetDatalinkVersion") -Destination $vendorDir
 
     Write-Host '正在应用去 Npcap 补丁 ...'
-    Push-Location $vendorDir
+    # Run from the EasyTier repository root. From the nested vendor directory,
+    # git apply silently skips the patch's root-relative src/... paths.
+    Push-Location $srcDir
     try {
         # --check 先行：宁可在这里明确失败，也不要打进半个补丁再去构建。
-        git apply --check $PatchFile
+        git apply --directory=vendor/pnet_datalink --check $PatchFile
         if ($LASTEXITCODE -ne 0) { throw '补丁无法应用（上游源码版本可能已变化）。' }
-        git apply $PatchFile
+        git apply --directory=vendor/pnet_datalink $PatchFile
         if ($LASTEXITCODE -ne 0) { throw '应用补丁失败。' }
     } finally {
         Pop-Location

@@ -6,13 +6,15 @@ on:
     branches:
       - master
       - main
+      - feat/workflow
+      - fix/workflow
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to rebuild (for example v2.8.0 or v2.8.0-rc.1)
-        required: true
+        description: Optional existing version tag; leave empty to build the selected branch
+        required: false
         type: string
       publish:
         description: Replace assets on the tag's GitHub Release after all checks pass
@@ -28,7 +30,7 @@ permissions:
 
 concurrency:
   group: mctier-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) }}
 
 defaults:
   run:
@@ -39,7 +41,7 @@ jobs:
     name: Resolve build metadata
     runs-on: ubuntu-latest
     outputs:
-      checkout_ref: ${{ steps.resolve.outputs.checkout_ref }}
+      checkout_ref: ${{ steps.source.outputs.sha }}
       channel: ${{ steps.resolve.outputs.channel }}
       publish: ${{ steps.resolve.outputs.publish }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
@@ -65,7 +67,7 @@ jobs:
           tag=""
           retention_days="3"
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
             tag="$INPUT_TAG"
             if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
               echo "Manual rebuilds require vX.Y.Z or vX.Y.Z-rc.N; received: $tag" >&2
@@ -75,6 +77,13 @@ jobs:
             checkout_ref="refs/tags/$tag"
             channel="$tag"
             publish="${INPUT_PUBLISH:-false}"
+            retention_days="14"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$INPUT_PUBLISH" == "true" ]]; then
+              echo 'Publishing requires an existing version tag.' >&2
+              exit 1
+            fi
+            channel="dev-${GIT_SHA:0:7}"
             retention_days="14"
           elif [[ "$GIT_REF" == refs/tags/* ]]; then
             tag="${GIT_REF#refs/tags/}"
@@ -89,7 +98,7 @@ jobs:
           elif [[ "$EVENT_NAME" == "schedule" ]]; then
             channel="nightly-$(date -u +%Y%m%d)"
             retention_days="7"
-          elif [[ "$GIT_REF" == "refs/heads/master" || "$GIT_REF" == "refs/heads/main" ]]; then
+          elif [[ "$EVENT_NAME" == "push" ]]; then
             channel="dev-${GIT_SHA:0:7}"
             retention_days="14"
           else
@@ -115,6 +124,10 @@ jobs:
           ref: ${{ steps.resolve.outputs.checkout_ref }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Pin every job to the resolved source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
 
       - name: Verify tagged versions are synchronized
         if: steps.resolve.outputs.tag != ''
@@ -292,7 +305,21 @@ jobs:
         run: |
           set -e
           sudo apt-get install -y shellcheck
-          shellcheck MCTier-Linux/scripts/*.sh
+          shellcheck MCTier-Linux/scripts/*.sh scripts/*.sh
+
+      - name: Test macOS tunnel supervisor lifecycle
+        run: python3 tests/macos-supervisor.test.py
+
+      - name: Validate GitHub Actions workflow
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$archive"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint"
 
       - name: Validate desktop entry and polkit policy
         run: |
@@ -379,7 +406,7 @@ jobs:
 
   desktop:
     name: Desktop package (${{ matrix.name }})
-    needs: metadata
+    needs: [metadata, frontend]
     strategy:
       fail-fast: false
       matrix:
@@ -410,7 +437,7 @@ jobs:
 
       - name: Install stable Rust target
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
           rustup target add "${{ matrix.target }}"
 
@@ -426,7 +453,7 @@ jobs:
           path: |
             src-tauri/resources/binaries/easytier-core
             src-tauri/resources/binaries/easytier-cli
-          key: mctier-easytier-macos-${{ matrix.target }}-v2.6.4
+          key: mctier-easytier-macos-${{ matrix.target }}-${{ hashFiles('scripts/fetch-macos-binaries.sh') }}
 
       - name: Install frontend dependencies
         run: npm ci
@@ -511,6 +538,15 @@ jobs:
           } | ConvertTo-Json -Depth 5
           [IO.File]::WriteAllText($configPath, $config)
           "MCTIER_TAURI_SIGNING_CONFIG=$configPath" >> $env:GITHUB_ENV
+
+      - name: Check and test native macOS code
+        if: runner.os == 'macOS'
+        working-directory: src-tauri
+        run: |
+          cargo check --all-targets --locked
+          cargo clippy --lib --tests --locked -- -D warnings
+          cargo test --lib --locked
+          python3 ../tests/macos-supervisor.test.py
 
       - name: Configure ad-hoc macOS signing
         if: runner.os == 'macOS' && needs.metadata.outputs.publish != 'true'
@@ -625,19 +661,9 @@ jobs:
 
       - name: Smoke-test macOS disk image
         if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          dmg="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -name '*.dmg' -type f -print -quit)"
-          test -n "$dmg"
-          hdiutil verify "$dmg"
-          mount_point="$RUNNER_TEMP/mctier-dmg-${{ matrix.id }}"
-          mkdir -p "$mount_point"
-          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point"
-          app="$(find "$mount_point" -maxdepth 1 -name '*.app' -type d -print -quit)"
-          test -n "$app"
-          test -x "$app/Contents/MacOS/mctier"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          hdiutil detach "$mount_point"
+        env:
+          REQUIRE_NOTARIZATION: ${{ needs.metadata.outputs.publish }}
+        run: bash scripts/check-macos-bundle.sh "${{ matrix.target }}"
 
       - name: Stage desktop package
         run: |
@@ -820,15 +846,18 @@ jobs:
         working-directory: release-assets
         run: |
           set -euo pipefail
+          checksums="$RUNNER_TEMP/mctier-release-checksums"
           find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
             | LC_ALL=C sort \
-            | xargs -r sha256sum >SHA256SUMS
+            | xargs -r sha256sum >"$checksums"
+          mv "$checksums" SHA256SUMS
           test -s SHA256SUMS
           cat SHA256SUMS
 
       - name: Create or update release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
           PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
         run: |

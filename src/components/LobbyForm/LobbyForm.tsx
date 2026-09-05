@@ -18,6 +18,11 @@ import { statsService } from '../../services/stats/statsService';
 import { PublicPlaza } from '../PublicPlaza/PublicPlaza';
 import type { PublicLobby } from '../../services/lobby/publicLobbies';
 import { parseLobbyInviteText, type LobbyInvite } from '../../services/lobby/lobbyInvite';
+import {
+  lobbySessionCoordinator,
+  type LobbySessionTicket,
+} from '../../services/lobby/LobbySessionCoordinator';
+import { prepareSignalingIdentity } from '../../services/signaling/signalingIdentity';
 import { useTranslation } from 'react-i18next';
 import { tl, getLanguage } from '../../i18n';
 import { startWindowDrag } from '../../utils/windowDrag';
@@ -218,8 +223,8 @@ const isLegacyOfficialServer = (server?: string) => {
   return (
     server === 'tcp://mctier.pmhs.top:11010' ||
     server === 'udp://mctier.pmhs.top:11010' ||
-    server === 'wss://mctier.pmhs.top/signaling' ||
-    server === 'ws://mctier.pmhs.top/signaling' ||
+    server === 'wss://test.pmhs.top' ||
+    server === 'ws://test.pmhs.top' ||
     server === 'wss://public.456469.xyz'
   );
 };
@@ -430,24 +435,18 @@ const generateRandomPassword = (): string => {
   const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const numbers = '0123456789';
   const allChars = lowercase + uppercase + numbers;
-
-  let password = '';
-
-  // 确保至少包含一个小写字母、一个大写字母和一个数字
-  password += lowercase[Math.floor(Math.random() * lowercase.length)];
-  password += uppercase[Math.floor(Math.random() * uppercase.length)];
-  password += numbers[Math.floor(Math.random() * numbers.length)];
-
-  // 填充剩余字符
-  for (let i = 3; i < 12; i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)];
+  const randomBytes = new Uint32Array(12);
+  crypto.getRandomValues(randomBytes);
+  const pick = (alphabet: string, index: number): string =>
+    alphabet[randomBytes[index] % alphabet.length];
+  const chars = [pick(lowercase, 0), pick(uppercase, 1), pick(numbers, 2)];
+  for (let i = 3; i < randomBytes.length; i += 1) chars.push(pick(allChars, i));
+  // Fisher-Yates with fresh CSPRNG words avoids the biased sort comparator.
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomBytes[i] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
   }
-
-  // 打乱顺序
-  return password
-    .split('')
-    .sort(() => Math.random() - 0.5)
-    .join('');
+  return chars.join('');
 };
 
 /**
@@ -474,7 +473,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   }>({
     usePrivateServer: false,
     privateEasytierServer: 'udp://us01.225284.xyz:11010',
-    privateSignalingServer: 'wss://mctier.pmhs.top/signaling',
+    privateSignalingServer: 'wss://test.pmhs.top',
   });
   const [customNodes, setCustomNodes] = useState<CustomEasyTierNode[]>([]);
   const [serverNodes, setServerNodes] = useState(getServerNodes([]));
@@ -651,7 +650,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       name: lobby.lobbyName,
       password: '',
       serverNode: hostNode || undefined,
-      signalingServer: hostNode ? 'wss://mctier.pmhs.top/signaling' : undefined,
+      signalingServer: hostNode ? 'wss://test.pmhs.top' : undefined,
     });
     message.info(
       hostNode
@@ -726,7 +725,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
             : 'udp://us01.225284.xyz:11010',
           privateSignalingServer: isSafeSignalingServer(settings.privateSignalingServer)
             ? settings.privateSignalingServer
-            : 'wss://mctier.pmhs.top/signaling',
+            : 'wss://test.pmhs.top',
         });
 
         // 加载自定义节点
@@ -906,6 +905,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const handleSubmit = async (values: LobbyFormValues, overrideNode?: string) => {
     // 记录本次实际尝试的节点选择，便于失败时提供「换节点重试」
     const failedNodeValue = overrideNode ?? values.serverNode;
+    let sessionTicket: LobbySessionTicket | null = null;
     try {
       setLoading(true);
       setAppState('connecting');
@@ -927,7 +927,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
 
       // 确定实际使用的服务器地址
       let serverNode = values.serverNode;
-      let signalingServer = 'wss://mctier.pmhs.top/signaling'; // 默认官方信令服务器
+      let signalingServer = 'wss://test.pmhs.top'; // 默认官方信令服务器
       const usingImportedEndpoint = Boolean(
         temporaryServerNode && values.serverNode === temporaryServerNode && !overrideNode
       );
@@ -935,13 +935,13 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       if (overrideNode) {
         // 一键换节点重试：强制使用指定的内置节点（官方信令服务器）
         serverNode = overrideNode;
-        signalingServer = 'wss://mctier.pmhs.top/signaling';
+        signalingServer = 'wss://test.pmhs.top';
         console.log('========================================');
         console.log('🔁 一键换节点重试，使用节点:', serverNode);
         console.log('========================================');
       } else if (usingImportedEndpoint && temporaryServerNode) {
         serverNode = temporaryServerNode;
-        signalingServer = temporarySignalingServer || 'wss://mctier.pmhs.top/signaling';
+        signalingServer = temporarySignalingServer || 'wss://test.pmhs.top';
         console.log('使用大厅邀请指定的临时连接节点:', serverNode);
       } else if (privateServerConfig.usePrivateServer) {
         // 如果启用了私有服务器，使用私有服务器配置（不添加默认备用节点）
@@ -993,6 +993,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       }
 
       const commandName = mode === 'create' ? 'create_lobby' : 'join_lobby';
+      sessionTicket = lobbySessionCoordinator.begin();
 
       // 记录本次实际使用的节点地址，供公开广场发布时同步给加入者
       try {
@@ -1002,39 +1003,10 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         /* ignore */
       }
 
-      // 获取当前玩家ID，如果不存在则生成一个新的
-      let { currentPlayerId } = useAppStore.getState();
-
-      if (!currentPlayerId) {
-        // 如果 playerId 不存在（可能是因为启动清理导致 Store 重置），生成一个新的
-        const timestamp = Date.now();
-        const randomSuffix = Math.random().toString(36).substring(2, 11);
-        currentPlayerId = `player-${timestamp}-${randomSuffix}`;
-
-        // 保存到 Store
-        const { setCurrentPlayerId } = useAppStore.getState();
-        setCurrentPlayerId(currentPlayerId);
-
-        console.log('⚠️ playerId 不存在，已生成新的 ID:', currentPlayerId);
-      }
-
-      // 从配置中读取虚拟域名（添加超时保护）
-      let virtualDomain: string | undefined = undefined;
-      try {
-        console.log('正在读取虚拟域名配置...');
-        const settingsPromise = invoke<any>('get_settings');
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('读取配置超时')), 3000)
-        );
-
-        const settings = (await Promise.race([settingsPromise, timeoutPromise])) as any;
-        virtualDomain = settings.virtualDomain || undefined;
-        console.log('从配置中读取虚拟域名:', virtualDomain);
-      } catch (error) {
-        console.warn('读取虚拟域名配置失败:', error);
-        // 使用默认值
-        virtualDomain = undefined;
-      }
+      const identity = await prepareSignalingIdentity();
+      lobbySessionCoordinator.assertCurrent(sessionTicket);
+      const currentPlayerId = identity.clientId;
+      useAppStore.getState().setCurrentPlayerId(currentPlayerId);
 
       console.log('准备调用后端命令:', commandName);
       console.log('连接参数已通过前端校验');
@@ -1048,8 +1020,15 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         serverNode: serverNode,
         signalingServer: signalingServer,
         useDomain: values.useDomain === true, // 明确转换为布尔值
-        virtualDomain: virtualDomain, // 传递虚拟域名
       });
+      if (!lobbySessionCoordinator.isCurrent(sessionTicket)) {
+        try {
+          await invoke('leave_lobby');
+        } catch {
+          await invoke('force_stop_easytier').catch(() => undefined);
+        }
+        return;
+      }
 
       console.log('✅ 后端命令调用成功，已收到大厅信息:', {
         hasLobby: !!lobby,
@@ -1123,6 +1102,13 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       // register-success，不能只凭 EasyTier 已拿到虚拟 IP 就提前显示。
       onClose();
     } catch (error) {
+      if (
+        sessionTicket?.signal.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        return;
+      }
+      if (sessionTicket) lobbySessionCoordinator.cancel(sessionTicket);
       console.error('操作失败:', error);
       console.error('错误详情:', JSON.stringify(error, null, 2));
       setAppState('error');
@@ -1348,11 +1334,19 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         }
       }
     } finally {
-      setLoading(false);
+      const currentSession = lobbySessionCoordinator.current();
+      if (
+        !sessionTicket ||
+        !currentSession ||
+        currentSession.generation === sessionTicket.generation
+      ) {
+        setLoading(false);
+      }
     }
   };
 
   const handleCancel = () => {
+    lobbySessionCoordinator.cancel();
     setAppState('idle');
     onClose();
   };
@@ -1769,10 +1763,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                   ]}
                 >
                   <Input
-                    placeholder={tl(
-                      '例如：wss://mctier.pmhs.top/signaling',
-                      'e.g. wss://mctier.pmhs.top/signaling'
-                    )}
+                    placeholder={tl('例如：wss://test.pmhs.top', 'e.g. wss://test.pmhs.top')}
                     size="large"
                     disabled={loading}
                     autoComplete="off"

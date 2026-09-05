@@ -2,10 +2,12 @@
 // 用于实现MCTier专属的Magic DNS功能
 
 use crate::modules::error::AppError;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+#[cfg(not(windows))]
+use std::{fs::OpenOptions, io::Write};
 
 fn validate_host_domain(domain: &str) -> Result<(), AppError> {
     if domain.is_empty() || domain.len() > 253 || domain != domain.trim() {
@@ -32,6 +34,12 @@ fn validate_host_domain(domain: &str) -> Result<(), AppError> {
         if !label.chars().all(|ch| ch.is_alphanumeric() || ch == '-') {
             return Err(AppError::ValidationError("域名包含非法字符".to_string()));
         }
+    }
+    let lower = domain.to_ascii_lowercase();
+    if lower == "mct.net" || !lower.ends_with(".mct.net") {
+        return Err(AppError::ValidationError(
+            "Hosts 仅允许派生的 *.mct.net 域名".to_string(),
+        ));
     }
     Ok(())
 }
@@ -78,10 +86,26 @@ pub struct HostsManager {
 }
 
 impl HostsManager {
+    /// Derive the only host name accepted by MCTier from the authenticated
+    /// signaling identity. Callers must provide the full SHA-256 fingerprint;
+    /// user-selected host names are never accepted at this boundary.
+    pub fn domain_for_identity(identity_id: &str) -> Result<String, AppError> {
+        if identity_id.len() != 64
+            || !identity_id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(AppError::ValidationError(
+                "信令身份 ID 无效，无法派生 hosts 域名".to_string(),
+            ));
+        }
+        Ok(format!("{}.mct.net", &identity_id[..32]))
+    }
+
     /// 创建新的Hosts管理器实例
     pub fn new(lobby_name: &str) -> Self {
         #[cfg(windows)]
-        let hosts_path = PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts");
+        let hosts_path = crate::modules::windows_paths::hosts_path();
 
         #[cfg(not(windows))]
         let hosts_path = PathBuf::from("/etc/hosts");
@@ -110,7 +134,7 @@ impl HostsManager {
         let _guard = hosts_lock().lock().unwrap_or_else(|e| e.into_inner());
 
         #[cfg(windows)]
-        let hosts_path = PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts");
+        let hosts_path = crate::modules::windows_paths::hosts_path();
 
         #[cfg(not(windows))]
         let hosts_path = PathBuf::from("/etc/hosts");
@@ -145,6 +169,11 @@ impl HostsManager {
             }
         }
 
+        if removed_count == 0 {
+            log::info!("✅ 没有发现MCTier hosts记录，无需清理");
+            return Ok(());
+        }
+
         // 重新组合内容
         let new_content = new_lines.join("\n");
         if !new_content.is_empty() && !new_content.ends_with('\n') {
@@ -161,11 +190,7 @@ impl HostsManager {
         // 刷新DNS缓存
         Self::flush_dns_cache_static()?;
 
-        if removed_count > 0 {
-            log::info!("✅ 已清理 {} 个MCTier hosts记录块", removed_count);
-        } else {
-            log::info!("✅ 没有发现MCTier hosts记录，无需清理");
-        }
+        log::info!("✅ 已清理 {} 个MCTier hosts记录块", removed_count);
 
         Ok(())
     }
@@ -179,24 +204,97 @@ impl HostsManager {
     /// 就是一个以 root 执行的命令注入点。`cp` 收到的两个参数始终是独立 argv，
     /// 内容再怪也只会被当成文件名。
     fn write_hosts_file(path: &std::path::Path, content: &str) -> Result<(), AppError> {
-        match OpenOptions::new().write(true).truncate(true).open(path) {
-            Ok(mut file) => {
-                file.write_all(content.as_bytes())
-                    .map_err(|e| AppError::FileError(format!("无法写入hosts文件: {}", e)))?;
-                Ok(())
+        #[cfg(windows)]
+        {
+            // 开发模式：跳过 hosts 文件写入
+            #[cfg(debug_assertions)]
+            {
+                let _ = (path, content);
+                log::info!("🔧 开发模式 - 跳过 hosts 文件写入");
+                return Ok(());
             }
-            Err(open_error) => {
-                #[cfg(windows)]
-                {
-                    Err(AppError::FileError(format!(
-                        "无法打开hosts文件进行写入: {}. 请确保以管理员权限运行",
-                        open_error
-                    )))
-                }
 
-                // Linux/macOS：应用本体以普通用户运行，/etc/hosts 需要一次 polkit 授权。
-                #[cfg(not(windows))]
-                {
+            // 生产模式：通过 privileged helper 写入
+            #[cfg(not(debug_assertions))]
+            {
+                use sha2::{Digest, Sha256};
+
+                if path != crate::modules::windows_paths::hosts_path() {
+                    return Err(AppError::FileError("拒绝写入非系统 hosts 路径".to_string()));
+                }
+                let current = std::fs::read(path)
+                    .map_err(|e| AppError::FileError(format!("读取 hosts 文件失败: {}", e)))?;
+                let expected_sha256 = Sha256::digest(&current)
+                    .iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>();
+                crate::modules::privileged_helper::run_one_shot(
+                    crate::modules::privileged_helper::HelperRequest::WriteHosts {
+                        expected_sha256,
+                        content: content.to_string(),
+                    },
+                )
+                .map_err(|error| {
+                    AppError::FileError(format!("无法通过特权 helper 写入 hosts 文件: {}", error))
+                })?;
+                return Ok(());
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS has no polkit. Keep both the destination and commands fixed;
+            // AppleScript's quoted form handles spaces/metacharacters in TMPDIR.
+            if path != std::path::Path::new("/etc/hosts")
+                && path != std::path::Path::new("/private/etc/hosts")
+            {
+                return Err(AppError::FileError("拒绝写入非系统 hosts 路径".to_string()));
+            }
+            use std::os::unix::fs::OpenOptionsExt;
+            let temp_path =
+                std::env::temp_dir().join(format!("mctier-hosts-{}", uuid::Uuid::new_v4()));
+            let result = (|| {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&temp_path)
+                    .map_err(|e| AppError::FileError(format!("创建临时 hosts 文件失败: {}", e)))?;
+                file.write_all(content.as_bytes())
+                    .and_then(|_| file.sync_all())
+                    .map_err(|e| AppError::FileError(format!("写入临时 hosts 文件失败: {}", e)))?;
+                drop(file);
+                let script = r#"on run argv
+do shell script "/bin/cat " & quoted form of (item 1 of argv) & " > /private/etc/hosts && /usr/bin/dscacheutil -flushcache && /usr/bin/killall -HUP mDNSResponder" with administrator privileges
+end run"#;
+                let output = std::process::Command::new("/usr/bin/osascript")
+                    .args(["-e", script, "--"])
+                    .arg(&temp_path)
+                    .output()
+                    .map_err(|e| {
+                        AppError::FileError(format!("启动 macOS hosts 授权失败: {}", e))
+                    })?;
+                if !output.status.success() {
+                    return Err(AppError::FileError(
+                        "macOS hosts 写入授权被取消或失败".to_string(),
+                    ));
+                }
+                Ok(())
+            })();
+            let _ = std::fs::remove_file(&temp_path);
+            return result;
+        }
+
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            match OpenOptions::new().write(true).truncate(true).open(path) {
+                Ok(mut file) => {
+                    file.write_all(content.as_bytes())
+                        .map_err(|e| AppError::FileError(format!("无法写入hosts文件: {}", e)))?;
+                    Ok(())
+                }
+                Err(open_error) => {
+                    // Linux/macOS：应用本体以普通用户运行，/etc/hosts 需要一次 polkit 授权。
                     log::info!("🔐 [HostsManager] 无直接写权限，请求 pkexec 授权写入 hosts");
 
                     // 临时文件放在私有目录并用 0o644，避免其它用户在覆盖前篡改内容
@@ -251,31 +349,9 @@ impl HostsManager {
     fn flush_dns_cache_static() -> Result<(), AppError> {
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
-            use std::process::Command;
-
-            // Windows 常量：CREATE_NO_WINDOW = 0x08000000
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-            log::info!("🔄 [HostsManager] 正在刷新DNS缓存...");
-
-            // 使用 ipconfig /flushdns
-            match Command::new("ipconfig")
-                .arg("/flushdns")
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-            {
-                Ok(output) => {
-                    if output.status.success() {
-                        log::info!("✅ [HostsManager] DNS缓存已刷新");
-                    } else {
-                        log::warn!("⚠️ [HostsManager] ipconfig刷新DNS缓存失败");
-                    }
-                }
-                Err(e) => {
-                    log::warn!("⚠️ [HostsManager] 执行ipconfig失败: {}", e);
-                }
-            }
+            // The helper performs the fixed DNS flush after a successful
+            // hosts update. There is no standalone privileged cache action.
+            log::debug!("Windows DNS cache is flushed by the hosts helper");
         }
 
         #[cfg(not(windows))]
@@ -514,72 +590,7 @@ impl HostsManager {
     fn flush_dns_cache(&self) -> Result<(), AppError> {
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
-            use std::process::Command;
-
-            // Windows 常量：CREATE_NO_WINDOW = 0x08000000
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-            log::info!("🔄 [HostsManager] 正在刷新DNS缓存...");
-
-            // 方法1: 使用 ipconfig /flushdns（隐藏窗口）
-            match Command::new("ipconfig")
-                .arg("/flushdns")
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-            {
-                Ok(output) => {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        log::info!("✅ [HostsManager] DNS缓存已刷新（ipconfig）");
-                        log::debug!("ipconfig 输出: {}", stdout);
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        log::warn!("⚠️ [HostsManager] ipconfig刷新DNS缓存失败: {}", stderr);
-                    }
-                }
-                Err(e) => {
-                    log::warn!("⚠️ [HostsManager] 执行ipconfig失败: {}", e);
-                }
-            }
-
-            // 方法2: 使用 netsh 清除DNS缓存（更彻底，隐藏窗口）
-            match Command::new("netsh")
-                .args(["interface", "ip", "delete", "arpcache"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-            {
-                Ok(output) => {
-                    if output.status.success() {
-                        log::info!("✅ [HostsManager] ARP缓存已清除（netsh）");
-                    } else {
-                        log::debug!("netsh清除ARP缓存失败（可能不影响DNS解析）");
-                    }
-                }
-                Err(e) => {
-                    log::debug!("执行netsh失败: {}（可能不影响DNS解析）", e);
-                }
-            }
-
-            // 方法3: 使用 netsh 重置DNS客户端（隐藏窗口）
-            match Command::new("netsh")
-                .args(["interface", "ip", "delete", "destinationcache"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-            {
-                Ok(output) => {
-                    if output.status.success() {
-                        log::info!("✅ [HostsManager] 目标缓存已清除（netsh）");
-                    } else {
-                        log::debug!("netsh清除目标缓存失败（可能不影响DNS解析）");
-                    }
-                }
-                Err(e) => {
-                    log::debug!("执行netsh失败: {}（可能不影响DNS解析）", e);
-                }
-            }
-
-            log::info!("✅ [HostsManager] DNS缓存刷新完成");
+            log::debug!("Windows DNS cache is flushed by the hosts helper");
         }
 
         #[cfg(not(windows))]
@@ -621,6 +632,20 @@ mod tests {
         assert!(validate_host_ip("10.126.126.8\n127.0.0.1").is_err());
         assert!(validate_host_ip("127.0.0.1").is_err());
         assert!(validate_host_ip("0.0.0.0").is_err());
+        assert!(validate_host_domain("player.example.com").is_err());
+        assert!(validate_host_domain("mct.net").is_err());
+        assert!(validate_host_domain("player.mct.net").is_ok());
+    }
+
+    #[test]
+    fn derives_hosts_domain_only_from_a_full_signaling_identity() {
+        let identity = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            HostsManager::domain_for_identity(identity).unwrap(),
+            "0123456789abcdef0123456789abcdef.mct.net"
+        );
+        assert!(HostsManager::domain_for_identity("player.mct.net").is_err());
+        assert!(HostsManager::domain_for_identity(&identity.to_ascii_uppercase()).is_err());
     }
 
     #[test]

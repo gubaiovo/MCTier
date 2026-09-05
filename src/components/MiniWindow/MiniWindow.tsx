@@ -1166,10 +1166,9 @@ export const MiniWindow: React.FC = () => {
       const signalingServer =
         settings.usePrivateServer && settings.privateSignalingServer
           ? settings.privateSignalingServer
-          : 'wss://mctier.pmhs.top/signaling';
+          : 'wss://test.pmhs.top';
 
       const useDomain = settings.useDomain || false;
-      const virtualDomain = settings.virtualDomain || '';
 
       const newLobby = await invoke<any>('join_lobby', {
         name: lobby.name || '',
@@ -1179,7 +1178,6 @@ export const MiniWindow: React.FC = () => {
         serverNode,
         signalingServer,
         useDomain: useDomain,
-        virtualDomain: virtualDomain,
       });
 
       console.log('✅ [MiniWindow] 重新加入大厅成功:', {
@@ -1199,7 +1197,7 @@ export const MiniWindow: React.FC = () => {
         config.playerName || tl('玩家', 'Player'),
         lobby.name || '',
         lobby.password || '',
-        virtualDomain,
+        undefined,
         useDomain,
         signalingServer
       );

@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 const val DefaultEasyTierNode = "udp://us01.225284.xyz:11010"
 const val RemovedQingyunNode = "wss://mctiers.pmhs.top"
-const val DefaultSignalingServer = "wss://mctier.pmhs.top/signaling"
+const val DefaultSignalingServer = "wss://test.pmhs.top"
 const val FileSharePort = 14539
 const val ChatServerPort = 14540
 const val ChatTokenHeader = "x-mctier-chat-token"
@@ -52,6 +52,8 @@ data class Player(
     val useDomain: Boolean = false,
     /** 该成员由信令名册下发的聊天签名公钥（base64 X.509 SPKI DER），缺失表示旧版客户端。 */
     val chatPublicKey: String? = null,
+    /** 服务端为该连接分配的 generation，防止旧连接事件污染新会话。 */
+    val sessionGeneration: Long? = null,
     val micEnabled: Boolean = false,
     val muted: Boolean = false,
     val speaking: Boolean = false,
@@ -161,6 +163,11 @@ data class UserSettings(
 @Serializable
 data class SignalingEnvelope(
     val type: String,
+    val protocolVersion: Int? = null,
+    val challenge: String? = null,
+    val identityPublicKey: String? = null,
+    val challengeSignature: String? = null,
+    val sessionGeneration: Long? = null,
     val lobbyId: String? = null,
     val chatToken: String? = null,
     val chatTokenEpoch: Long? = null,
@@ -227,6 +234,7 @@ data class PlayerWire(
     val virtualDomain: String? = null,
     val useDomain: Boolean? = null,
     val chatPublicKey: String? = null,
+    val sessionGeneration: Long? = null,
 )
 
 @Serializable

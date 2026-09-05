@@ -149,7 +149,8 @@ test('macOS permits runtime private WebSocket signaling without disabling native
 });
 
 test('tokenless legacy signaling cannot masquerade as a successful lobby join', () => {
-  assert.match(androidRepository, /信令服务器协议过旧，缺少大厅认证信息/);
+  assert.match(androidRepository, /registeredId != _state.value.playerId/);
+  assert.match(androidRepository, /sessionGeneration == null \|\| sessionGeneration <= 0L/);
   assert.match(androidRepository, /!isValidChatToken\(token\) \|\| epoch <= 0L/);
 
   const connectBlock = desktopRtc.slice(

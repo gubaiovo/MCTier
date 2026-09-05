@@ -177,8 +177,7 @@ export const SettingsWindow: React.FC<{ onClose: () => void }> = ({ onClose }) =
         usePrivateServer: ups,
         // 只在后端返回 null/undefined 时使用默认值
         privateEasytierServer: settings.privateEasytierServer ?? 'udp://us01.225284.xyz:11010',
-        privateSignalingServer:
-          settings.privateSignalingServer ?? 'wss://mctier.pmhs.top/signaling',
+        privateSignalingServer: settings.privateSignalingServer ?? 'wss://test.pmhs.top',
         alwaysOnTop: aot,
         rememberWindowPosition: rwp,
         closeToTray: ctt,
@@ -214,7 +213,7 @@ export const SettingsWindow: React.FC<{ onClose: () => void }> = ({ onClose }) =
         useDomain: false,
         usePrivateServer: false,
         privateEasytierServer: 'udp://us01.225284.xyz:11010',
-        privateSignalingServer: 'wss://mctier.pmhs.top/signaling',
+        privateSignalingServer: 'wss://test.pmhs.top',
         alwaysOnTop: true,
         rememberWindowPosition: false,
         closeToTray: false,
@@ -1055,10 +1054,7 @@ export const SettingsWindow: React.FC<{ onClose: () => void }> = ({ onClose }) =
                           },
                         ]}
                       >
-                        <Input
-                          placeholder="wss://mctier.pmhs.top/signaling"
-                          onBlur={handleFieldBlur}
-                        />
+                        <Input placeholder="wss://test.pmhs.top" onBlur={handleFieldBlur} />
                       </Form.Item>
                       <div
                         style={{
@@ -1096,7 +1092,7 @@ export const SettingsWindow: React.FC<{ onClose: () => void }> = ({ onClose }) =
                           onClick={async () => {
                             const defaults = {
                               privateEasytierServer: 'udp://us01.225284.xyz:11010',
-                              privateSignalingServer: 'wss://mctier.pmhs.top/signaling',
+                              privateSignalingServer: 'wss://test.pmhs.top',
                             };
                             form.setFieldsValue(defaults);
                             await saveAll(defaults);

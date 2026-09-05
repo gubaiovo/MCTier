@@ -40,6 +40,8 @@ src-tauri/target
 src-tauri/WixTools
 src-tauri/resources/binaries/easytier-core
 src-tauri/resources/binaries/easytier-cli
+src-tauri/resources/binaries/easytier-core-*-apple-darwin
+src-tauri/resources/binaries/easytier-cli-*-apple-darwin
 
 # Local signing material (CI reconstructs these from encrypted secrets)
 *.jks

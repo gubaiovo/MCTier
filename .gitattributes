@@ -5,3 +5,6 @@
 # 对不上，git apply 会直接失败。把补丁固定为 LF，避免「照文档执行却打不上补丁」。
 *.patch text eol=lf
 *.diff text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

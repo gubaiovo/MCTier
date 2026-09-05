@@ -26,7 +26,8 @@
         "visible": true,
         "fullscreen": false,
         "maximizable": true,
-        "zoomHotkeysEnabled": false
+        "zoomHotkeysEnabled": false,
+        "devtools": true
       }
     ],
     "security": {
@@ -125,7 +126,7 @@
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false
       },

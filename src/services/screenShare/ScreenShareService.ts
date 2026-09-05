@@ -74,6 +74,39 @@ class ScreenShareService {
   > = new Map();
   private sourceFrameSequences: Map<string, number> = new Map();
   private outboundHealthTimers: Map<string, number> = new Map();
+  private passwordFailures: Map<string, { failures: number; blockedUntil: number }> = new Map();
+
+  private passwordAttemptKey(shareId: string, viewerId: string): string {
+    return `${shareId}\u0000${viewerId}`;
+  }
+
+  private allowPasswordAttempt(shareId: string, viewerId: string): boolean {
+    const key = this.passwordAttemptKey(shareId, viewerId);
+    const state = this.passwordFailures.get(key);
+    if (!state) return true;
+    if (state.blockedUntil <= Date.now()) {
+      this.passwordFailures.delete(key);
+      return true;
+    }
+    return false;
+  }
+
+  private recordPasswordFailure(shareId: string, viewerId: string): number {
+    const key = this.passwordAttemptKey(shareId, viewerId);
+    const previous = this.passwordFailures.get(key);
+    const failures = Math.min((previous?.failures ?? 0) + 1, 8);
+    const delayMs = Math.min(30_000, 250 * 2 ** (failures - 1));
+    this.passwordFailures.set(key, { failures, blockedUntil: Date.now() + delayMs });
+    if (this.passwordFailures.size > 4096) {
+      const oldest = this.passwordFailures.keys().next().value;
+      if (oldest) this.passwordFailures.delete(oldest);
+    }
+    return delayMs;
+  }
+
+  private clearPasswordFailures(shareId: string, viewerId: string): void {
+    this.passwordFailures.delete(this.passwordAttemptKey(shareId, viewerId));
+  }
 
   /**
    * 初始化服务
@@ -108,6 +141,12 @@ class ScreenShareService {
         throw new Error('屏幕共享密码不能为空');
       }
       console.log('🖥️ [ScreenShareService] 开始捕获屏幕...');
+
+      if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+        throw new Error(
+          '当前系统的 WebView 不支持屏幕捕获，请升级系统后重试；仍可接收其他玩家的共享画面。'
+        );
+      }
 
       // 捕获屏幕
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
@@ -207,6 +246,9 @@ class ScreenShareService {
     this.unhealthyRelays.delete(shareId);
     this.unhealthyRelayEdges.delete(shareId);
     this.pendingDetachUpstreams.delete(shareId);
+    for (const key of this.passwordFailures.keys()) {
+      if (key.startsWith(`${shareId}\u0000`)) this.passwordFailures.delete(key);
+    }
     const recoveryTimer = this.relayRecoveryTimers.get(shareId);
     if (recoveryTimer) window.clearTimeout(recoveryTimer);
     this.relayRecoveryTimers.delete(shareId);
@@ -659,16 +701,19 @@ class ScreenShareService {
 
     if (message.action === 'join' && this.currentPlayerId === ownerId) {
       if (message.to !== this.currentPlayerId || senderId === this.currentPlayerId) return;
+      if (!this.allowPasswordAttempt(shareId, senderId)) return;
       if (share.requirePassword && message.password !== share.password) {
+        const retryAfterMs = this.recordPasswordFailure(shareId, senderId);
         this.sendWebSocketMessage({
           type: 'screen-share-error',
           from: this.currentPlayerId,
           to: message.from,
           shareId,
-          error: '密码错误',
+          error: `密码错误，请 ${Math.ceil(retryAfterMs / 1000)} 秒后重试`,
         });
         return;
       }
+      this.clearPasswordFailures(shareId, senderId);
       const order = this.viewerOrder.get(shareId) ?? [];
       if (!order.includes(message.from)) order.push(message.from);
       this.viewerOrder.set(shareId, order);
@@ -1492,15 +1537,17 @@ class ScreenShareService {
         return;
       }
       if (isLegacyDirectOffer && share.requirePassword && offer.password !== share.password) {
+        const retryAfterMs = this.recordPasswordFailure(offer.shareId, offer.playerId);
         this.sendWebSocketMessage({
           type: 'screen-share-error',
           from: this.currentPlayerId,
           to: offer.playerId,
           shareId: offer.shareId,
-          error: '密码错误',
+          error: `密码错误，请 ${Math.ceil(retryAfterMs / 1000)} 秒后重试`,
         });
         return;
       }
+      if (isLegacyDirectOffer) this.clearPasswordFailures(offer.shareId, offer.playerId);
 
       const sourceStream = isOwner ? this.localStream : this.remoteStreams.get(offer.shareId);
       if (!sourceStream || sourceStream.getVideoTracks().length === 0) {
@@ -1908,6 +1955,7 @@ class ScreenShareService {
     this.viewingRouteVersions.clear();
     this.pendingRelayOffers.clear();
     this.pendingIceCandidates.clear();
+    this.passwordFailures.clear();
     this.relayProtocolConfirmed.clear();
     this.ws = null;
 

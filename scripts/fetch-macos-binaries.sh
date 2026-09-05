@@ -12,12 +12,14 @@ REQUESTED_ARCH="${1:-$(uname -m)}"
 case "$REQUESTED_ARCH" in
   arm64|aarch64)
     EASYTIER_ARCH="aarch64"
+    TARGET_TRIPLE="aarch64-apple-darwin"
     ARCHIVE_SHA256="4BE1882D1AA36D31C1D6BA0596F2CF8A097E371F8DA124212324B2E0F8DF7E4B"
     CORE_SHA256="6478A522B8637E2BD2AD3ADAD66ED04A71B35F832BD9889BFFAF1863262F6DDF"
     CLI_SHA256="C700C4FEE1A7F35FCC1A048520D40CEA477B6CF7BF6D75F423FE1642C1EBC75D"
     ;;
   x86_64|amd64)
     EASYTIER_ARCH="x86_64"
+    TARGET_TRIPLE="x86_64-apple-darwin"
     ARCHIVE_SHA256="89FC28A6E6995259D76CE3F11775220E8A21C760E94DF91A6A9DB30A69B6982E"
     CORE_SHA256="DDF95A012599E424A632105FC3DC87D15C0A2DAAF30A20B71AA95C8F896F9A2F"
     CLI_SHA256="1E3353FAB30614BFB0277B05C8FF5F478394448E678E5A868AC09AF3EF9CCF8B"
@@ -30,6 +32,14 @@ esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_DIR="$REPO_ROOT/src-tauri/resources/binaries"
+
+# Tauri signs and bundles the target-suffixed copies as nested executables.
+# Keep the pinned originals intact for cache validation and development builds.
+stage_sidecars() {
+  for name in easytier-core easytier-cli; do
+    install -m 755 "$TARGET_DIR/$name" "$TARGET_DIR/$name-$TARGET_TRIPLE"
+  done
+}
 
 # A successful actions/cache restore already contains the exact pinned files.
 # Verify both files before skipping the network download; an incomplete or
@@ -51,6 +61,7 @@ for name in easytier-core easytier-cli; do
 done
 if [[ "$cached_ok" == "true" ]]; then
   chmod 755 "$TARGET_DIR/easytier-core" "$TARGET_DIR/easytier-cli"
+  stage_sidecars
   echo "Pinned EasyTier macOS binaries already verified; skipping download."
   exit 0
 fi
@@ -100,4 +111,5 @@ for name in easytier-core easytier-cli; do
   install -m 755 "$source_path" "$TARGET_DIR/$name"
 done
 
+stage_sidecars
 echo "EasyTier macOS binaries are ready in $TARGET_DIR"

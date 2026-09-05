@@ -33,6 +33,7 @@ import { speakingDetector } from './services/voice/SpeakingDetector';
 import { versionCheckService } from './services/version/VersionCheckService';
 import { DOWNLOAD_WEBSITE } from './services/version/versionPolicy';
 import { parseLobbyInviteLink } from './services/lobby/lobbyInvite';
+import { lobbySessionCoordinator } from './services/lobby/LobbySessionCoordinator';
 import type { UserConfig } from './types';
 import {
   THEME_CHANGED_EVENT,
@@ -118,7 +119,6 @@ function MainApp() {
   const addPlayer = useAppStore((state) => state.addPlayer);
   const removePlayer = useAppStore((state) => state.removePlayer);
   const updatePlayerStatus = useAppStore((state) => state.updatePlayerStatus);
-  const setCurrentPlayerId = useAppStore((state) => state.setCurrentPlayerId);
   const currentPlayerId = useAppStore((state) => state.currentPlayerId);
   const addChatMessage = useAppStore((state) => state.addChatMessage);
   const setPlayerSpeaking = useAppStore((state) => state.setPlayerSpeaking);
@@ -400,13 +400,6 @@ function MainApp() {
         // 初始化状态管理（同步）
         initializeStore();
 
-        // 生成玩家ID（在应用启动时就生成，而不是等到加入大厅）
-        const timestamp = Date.now();
-        const randomSuffix = Math.random().toString(36).substring(2, 11);
-        const playerId = `player-${timestamp}-${randomSuffix}`;
-        setCurrentPlayerId(playerId);
-        console.log('应用启动时生成玩家ID:', playerId);
-
         // 监听窗口关闭事件
         const appWindow = getCurrentWindow();
         const unlistenClose = await appWindow.onCloseRequested(async () => {
@@ -527,7 +520,8 @@ function MainApp() {
 
       const initWebRTC = async () => {
         try {
-          // 使用应用启动时生成的玩家ID，而不是重新生成
+          const sessionTicket =
+            lobbySessionCoordinator.current() ?? lobbySessionCoordinator.begin();
           const { currentPlayerId: playerId } = useAppStore.getState();
 
           if (!playerId) {
@@ -549,8 +543,12 @@ function MainApp() {
             );
 
             // 设置版本错误信息到store，MiniWindow 会据此显示全屏强制更新提示
-            const { setVersionError } = useAppStore.getState();
+            const { setVersionError, clearLobby, setAppState } = useAppStore.getState();
             setVersionError({ currentVersion, minimumVersion, downloadUrl: DOWNLOAD_WEBSITE });
+
+            // 清理前端大厅状态，否则 MiniWindow 仍在位、轮询定时器继续对已停止的后端发 RPC
+            clearLobby();
+            setAppState('idle');
 
             // 仅弹提示是不够的：EasyTier 是先于信令启动的，信令拒绝时虚拟网卡已经建好，
             // 而 EasyTier 组网本身不依赖信令，低版本客户端此时仍然连在同一个虚拟局域网里
@@ -581,7 +579,7 @@ function MainApp() {
 
           // 初始化WebRTC客户端
           // 从 lobby 对象中获取信令服务器地址，如果没有则使用默认值
-          const signalingServer = lobby.signalingServer || 'wss://mctier.pmhs.top/signaling';
+          const signalingServer = lobby.signalingServer || 'wss://test.pmhs.top';
           console.log('已准备 WebRTC 连接参数');
 
           await webrtcClient.initialize(
@@ -589,10 +587,12 @@ function MainApp() {
             playerName,
             lobby.name,
             lobby.password || '',
-            lobby.virtualDomain,
+            undefined,
             lobby.useDomain,
-            signalingServer
+            signalingServer,
+            sessionTicket
           );
+          lobbySessionCoordinator.assertCurrent(sessionTicket);
 
           // 初始化屏幕共享服务
           const ws = (webrtcClient as any).websocket; // 获取WebSocket实例
@@ -834,7 +834,6 @@ function MainApp() {
     addPlayer,
     removePlayer,
     updatePlayerStatus,
-    setCurrentPlayerId,
     addChatMessage,
     webRtcRetryTick,
   ]);

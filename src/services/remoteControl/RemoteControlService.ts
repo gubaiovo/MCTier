@@ -175,6 +175,12 @@ class RemoteControlService {
     this.peerName = safeControllerName;
     this.pendingRequest = null;
     try {
+      if (/Macintosh|Mac OS X/.test(navigator.userAgent)) {
+        throw new Error('macOS 暂不支持作为远程被控端；你仍可控制其他受支持设备。');
+      }
+      if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+        throw new Error('当前系统的 WebView 不支持屏幕捕获，无法接受远程控制。');
+      }
       // 在用户手势内采集屏幕（getDisplayMedia 需要用户激活）。
       // 先保存在局部变量，避免旧授权 Promise 覆盖后续新会话的 localStream。
       const stream = await navigator.mediaDevices.getDisplayMedia({

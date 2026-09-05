@@ -151,6 +151,22 @@ test('pending request stop invalidates delayed accept', async () => {
   assert.equal(mocks.sent.length, 0);
 });
 
+test('macOS declines unsupported input injection before starting screen capture', async () => {
+  let captured = false;
+  const mocks = installBrowserMocks({ capture: async () => { captured = true; } });
+  navigator.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)';
+  const { remoteControlService } = await loadService();
+  remoteControlService.initialize('local', 'Local', mocks.websocket);
+  remoteControlService.handleRequest('sid-macos', 'controller', 'Controller', 'local');
+  await assert.rejects(
+    remoteControlService.acceptControl('sid-macos', 'controller', 'Controller'),
+    /macOS 暂不支持作为远程被控端/,
+  );
+  assert.equal(captured, false);
+  assert.equal(remoteControlService.getRole(), 'idle');
+  assert.equal(mocks.sent.at(-1).type, 'remote-control-reject');
+});
+
 test('old PC callbacks cannot stop or signal a second session', async () => {
   const peerConnections = [];
   const uuids = ['session-one', 'session-two'];

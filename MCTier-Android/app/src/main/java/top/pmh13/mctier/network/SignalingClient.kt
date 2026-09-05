@@ -32,6 +32,8 @@ class SignalingClient {
     @Volatile private var reconnectAttempts = 0
     private var connectArgs: ConnectArgs? = null
     @Volatile private var connectionGeneration = 0L
+    @Volatile private var serverSessionGeneration: Long? = null
+    @Volatile private var registrationSent = false
     @Volatile private var reconnectJob: Job? = null
     @Volatile private var stableJob: Job? = null
     @Volatile private var heartbeatJob: Job? = null
@@ -56,6 +58,8 @@ class SignalingClient {
             connectionGeneration += 1
             connectArgs = args
             reconnectAttempts = 0
+            serverSessionGeneration = null
+            registrationSent = false
             connectionGeneration
         }
         reconnectJob?.cancel(); reconnectJob = null
@@ -66,7 +70,11 @@ class SignalingClient {
     }
 
     fun send(message: SignalingEnvelope): Boolean {
-        val json = MctierJson.encodeToString(SignalingEnvelope.serializer(), message)
+        val outgoing = serverSessionGeneration?.let { generation ->
+            if (message.type == "register-v3" || message.type == "server-challenge") message
+            else message.copy(sessionGeneration = message.sessionGeneration ?: generation)
+        } ?: message
+        val json = MctierJson.encodeToString(SignalingEnvelope.serializer(), outgoing)
         return webSocket?.send(json) == true
     }
 
@@ -77,6 +85,8 @@ class SignalingClient {
         reconnectJob?.cancel()
         webSocket?.let { runCatching { it.cancel() } }
         webSocket = null
+        serverSessionGeneration = null
+        registrationSent = false
         _connected.value = false
         reconnectJob = scope.launch {
             delay(200)
@@ -91,6 +101,8 @@ class SignalingClient {
         synchronized(this) {
             connectionGeneration += 1
             connectArgs = null
+            serverSessionGeneration = null
+            registrationSent = false
         }
         _connected.value = false
         reconnectJob?.cancel(); reconnectJob = null
@@ -109,12 +121,9 @@ class SignalingClient {
             override fun onOpen(ws: WebSocket, response: Response) {
                 if (ws !== webSocket || generation != connectionGeneration) return
                 openedGeneration = generation
-                _connected.value = true
-                sendRegistration(args)
-                startHeartbeat()
-                // 连接稳定 6 秒后才认为重连成功并清零退避；6 秒内被关闭则继续指数退避
-                stableJob?.cancel()
-                stableJob = scope.launch { delay(6000); if (ws === webSocket) reconnectAttempts = 0 }
+                // WebSocket open is only a transport state. The repository must
+                // not send lobby traffic until the challenge/register handshake
+                // has completed and register-success has been validated.
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
@@ -122,26 +131,40 @@ class SignalingClient {
                 runCatching {
                     MctierJson.decodeFromString(SignalingEnvelope.serializer(), text)
                 }.onSuccess { message ->
-                    if (eventChannel.trySend(message).isFailure) {
-                        android.util.Log.e(
-                            "SignalingClient",
-                            "Dropped signaling event type=${message.type}: event buffer is full",
-                        )
+                    when (message.type) {
+                        "server-challenge" -> handleServerChallenge(ws, args, generation, message)
+                        "register-success" -> {
+                            val assignedId = message.clientId
+                            val assignedGeneration = message.sessionGeneration
+                            if (assignedId != args.identityId || assignedGeneration == null || assignedGeneration <= 0L) {
+                                android.util.Log.e("SignalingClient", "拒绝无效的 v3 注册响应")
+                                ws.close(1008, "invalid-register-success")
+                                return@onSuccess
+                            }
+                            serverSessionGeneration = assignedGeneration
+                            _connected.value = true
+                            startHeartbeat()
+                            // 连接稳定 6 秒后才认为重连成功并清零退避；6 秒内被关闭则继续指数退避
+                            stableJob?.cancel()
+                            stableJob = scope.launch { delay(6000); if (ws === webSocket) reconnectAttempts = 0 }
+                            eventChannel.trySend(message)
+                        }
+                        else -> {
+                            // A top-level sessionGeneration on player-joined identifies
+                            // the joining peer, not this WebSocket. Per-peer generation
+                            // checks are applied by the repository when roster events
+                            // are merged; never compare another peer's generation to ours.
+                            eventChannel.trySend(message)
+                        }
                     }
-                }.onFailure { error ->
-                    // 不输出原始帧，避免聊天内容等数据进入日志；保留类型无关的解析错误即可
-                    // 判断线上信令服务是否仍运行着与客户端模型不兼容的旧协议。
-                    android.util.Log.e(
-                        "SignalingClient",
-                        "Failed to decode signaling frame: ${error.message}",
-                        error,
-                    )
                 }
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                 if (ws !== webSocket || generation != connectionGeneration) return // 旧连接的回调，忽略，避免触发重连风暴
                 webSocket = null
+                serverSessionGeneration = null
+                registrationSent = false
                 _connected.value = false
                 android.util.Log.w("SignalingClient", "WS onClosed code=$code reason=$reason")
                 scheduleReconnect(args, generation)
@@ -155,6 +178,8 @@ class SignalingClient {
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 if (ws !== webSocket || generation != connectionGeneration) return // 旧连接被主动取消触发的失败，忽略
                 webSocket = null
+                serverSessionGeneration = null
+                registrationSent = false
                 _connected.value = false
                 android.util.Log.e("SignalingClient", "WS onFailure: ${t.message} resp=${response?.code}")
                 if (openedGeneration != generation && reportedFailureGeneration != generation) {
@@ -169,22 +194,54 @@ class SignalingClient {
         webSocket = ws
     }
 
-    private fun sendRegistration(args: ConnectArgs): Boolean = send(
-        SignalingEnvelope(
-            type = "register",
-            clientId = args.playerId,
-            playerName = args.playerName,
-            virtualIp = args.virtualIp,
-            virtualDomain = args.virtualDomain,
-            useDomain = args.useDomain,
-            // 聊天签名公钥随注册一并上送：它只在这条已认证的 WebSocket 上出现，
-            // 由服务器绑定到本连接的 playerId 后再分发给其他成员，成员无法替他人发布。
-            chatPublicKey = args.chatPublicKey,
-            lobbyName = args.lobbyName,
-            lobbyPassword = args.lobbyPassword,
-            clientVersion = AppClientVersion,
-        ),
-    )
+    private fun handleServerChallenge(
+        ws: WebSocket,
+        args: ConnectArgs,
+        generation: Long,
+        message: SignalingEnvelope,
+    ) {
+        if (ws !== webSocket || generation != connectionGeneration || registrationSent) return
+        val challenge = message.challenge?.trim().orEmpty()
+        if (message.protocolVersion != ChatAuth.SIGNALING_PROTOCOL_VERSION || !isValidChallenge(challenge)) {
+            android.util.Log.e("SignalingClient", "拒绝无效的 server-challenge")
+            ws.close(1008, "invalid-server-challenge")
+            return
+        }
+        if (args.identityId != args.signer.identityId() || args.chatPublicKey != args.signer.publicKeyBase64()) {
+            android.util.Log.e("SignalingClient", "信令身份 ID 与签名公钥不匹配")
+            ws.close(1008, "identity-mismatch")
+            return
+        }
+        registrationSent = true
+        if (!sendRegistration(args, challenge)) {
+            registrationSent = false
+            ws.close(1008, "registration-signature-failed")
+        }
+    }
+
+    private fun isValidChallenge(challenge: String): Boolean =
+        challenge.length == 64 && challenge.all { it in '0'..'9' || it in 'a'..'f' }
+
+    private fun sendRegistration(args: ConnectArgs, challenge: String): Boolean {
+        val signature = args.signer.signSignalingRegistration(challenge, args.lobbyName, args.virtualIp)
+            ?: return false
+        // Keep the published key tied to the signer supplied for this lobby.
+        val chatPublicKey = args.chatPublicKey
+        return send(
+            SignalingEnvelope(
+                type = "register-v3",
+                protocolVersion = ChatAuth.SIGNALING_PROTOCOL_VERSION,
+                identityPublicKey = chatPublicKey,
+                challengeSignature = signature,
+                playerName = args.playerName,
+                virtualIp = args.virtualIp,
+                lobbyName = args.lobbyName,
+                lobbyPassword = args.lobbyPassword,
+                clientVersion = AppClientVersion,
+                useDomain = args.useDomain,
+            ),
+        )
+    }
 
     private fun scheduleReconnect(args: ConnectArgs, generation: Long) {
         if (generation != connectionGeneration || connectArgs != args) return
@@ -213,12 +270,12 @@ class SignalingClient {
 
 data class ConnectArgs(
     val url: String,
-    val playerId: String,
+    val identityId: String,
     val playerName: String,
     val lobbyName: String,
     val lobbyPassword: String,
     val virtualIp: String,
-    val virtualDomain: String?,
-    val useDomain: Boolean,
-    val chatPublicKey: String? = null,
+    val signer: ChatAuth.ChatSigner,
+    val useDomain: Boolean = false,
+    val chatPublicKey: String = signer.publicKeyBase64(),
 )

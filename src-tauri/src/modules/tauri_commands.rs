@@ -413,12 +413,10 @@ fn windows_run_value(exe: &std::path::Path) -> Result<String, String> {
 
 #[cfg(windows)]
 fn windows_system_command(name: &str) -> std::path::PathBuf {
-    std::env::var_os("SystemRoot")
-        .map(std::path::PathBuf::from)
-        .filter(|root| root.is_absolute())
-        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"))
-        .join("System32")
-        .join(name)
+    // Canonical example: windows_system_command("WindowsPowerShell\\v1.0\\powershell.exe")
+    // Elevation is performed by the typed helper; the legacy equivalent was
+    // `Start-Process -FilePath $env:MCTIER_EXE -Verb RunAs`.
+    crate::modules::windows_paths::system_command(name)
 }
 
 #[cfg(not(windows))]
@@ -471,11 +469,17 @@ pub async fn create_lobby(
     server_node: String,
     signaling_server: String,
     use_domain: Option<bool>,
-    virtual_domain: Option<String>,
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Lobby, String> {
-    log::info!("收到创建大厅命令: name={}, player={}, player_id={}, signaling_server={}, use_domain={:?}, virtual_domain={:?}", name, player_name, player_id, signaling_server, use_domain, virtual_domain);
+    log::info!(
+        "收到创建大厅命令: name={}, player={}, player_id={}, signaling_server={}, use_domain={:?}",
+        name,
+        player_name,
+        player_id,
+        signaling_server,
+        use_domain
+    );
 
     let core = state.core.lock().await;
 
@@ -512,10 +516,10 @@ pub async fn create_lobby(
             name,
             password,
             player_name.clone(),
+            &player_id,
             server_node,
             signaling_server.clone(),
             use_domain.unwrap_or(false),
-            virtual_domain,
             &network_svc,
             &app_handle,
             global_config,
@@ -526,8 +530,10 @@ pub async fn create_lobby(
         Ok(lobby) => {
             log::info!("大厅创建成功: {}", lobby.name);
 
-            // 输出序列化后的JSON用于调试
-            if let Ok(json) = serde_json::to_string(&lobby) {
+            // Never put the EasyTier/lobby secret into the persistent log.
+            let mut log_lobby = lobby.clone();
+            log_lobby.password = None;
+            if let Ok(json) = serde_json::to_string(&log_lobby) {
                 log::info!("大厅JSON: {}", json);
             }
 
@@ -596,11 +602,17 @@ pub async fn join_lobby(
     server_node: String,
     signaling_server: String,
     use_domain: Option<bool>,
-    virtual_domain: Option<String>,
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Lobby, String> {
-    log::info!("收到加入大厅命令: name={}, player={}, player_id={}, signaling_server={}, use_domain={:?}, virtual_domain={:?}", name, player_name, player_id, signaling_server, use_domain, virtual_domain);
+    log::info!(
+        "收到加入大厅命令: name={}, player={}, player_id={}, signaling_server={}, use_domain={:?}",
+        name,
+        player_name,
+        player_id,
+        signaling_server,
+        use_domain
+    );
 
     let core = state.core.lock().await;
 
@@ -639,10 +651,10 @@ pub async fn join_lobby(
             name,
             password,
             player_name.clone(),
+            &player_id,
             server_node,
             signaling_server.clone(),
             use_domain.unwrap_or(false),
-            virtual_domain,
             &network_svc,
             &app_handle,
             global_config,
@@ -1729,7 +1741,10 @@ pub async fn cancel_lobby_connecting() -> Result<(), String> {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    crate::modules::macos_platform::stop_tunnel().await;
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let pkill = unix_system_command("pkill")?;
         let _ = tokio::process::Command::new(pkill)
@@ -1827,26 +1842,25 @@ pub async fn check_firewall_rules() -> Result<bool, String> {
 
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        // 开发模式：跳过防火墙检查，直接返回 true
+        #[cfg(debug_assertions)]
+        {
+            log::info!("🔧 开发模式 - 跳过防火墙规则检查");
+            return Ok(true);
+        }
 
-        // 检查 Windows 防火墙是否已存在 MCTier 的放行规则
-        // 注意：必须与 add_firewall_rules 中添加的规则名保持一致
-        let output = Command::new(windows_system_command("netsh.exe"))
-            .args(["advfirewall", "firewall", "show", "rule", "name=all"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("执行 netsh 失败: {}", e))?;
+        // 生产模式：通过 privileged helper 检查
+        #[cfg(not(debug_assertions))]
+        {
+            let has_rules = crate::modules::privileged_helper::run_one_shot(
+                crate::modules::privileged_helper::HelperRequest::CheckFirewall,
+            )?
+            .and_then(|value| value.parse::<bool>().ok())
+            .unwrap_or(false);
 
-        let output_str = String::from_utf8_lossy(&output.stdout);
-
-        // 检查是否存在 MCTier 自身添加的放行规则
-        // add_firewall_rules 添加的规则名为：MCTier-in/-out、MCTier-EasyTier-in/-out
-        let has_rules = output_str.contains("MCTier");
-
-        log::info!("防火墙规则检查结果: {}", has_rules);
-        Ok(has_rules)
+            log::info!("防火墙规则检查结果: {}", has_rules);
+            Ok(has_rules)
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -1891,23 +1905,7 @@ pub async fn is_admin() -> bool {
     }
     #[cfg(target_os = "macos")]
     {
-        // macOS 的 TUN 配置需要 root。除了直接以 root 运行外，允许已经
-        // 通过系统授权缓存的 sudo 会话，避免引导页把可用状态误报为失败。
-        if std::process::Command::new("/usr/bin/id")
-            .arg("-u")
-            .output()
-            .ok()
-            .and_then(|output| String::from_utf8(output.stdout).ok())
-            .map(|uid| uid.trim() == "0")
-            .unwrap_or(false)
-        {
-            return true;
-        }
-        return std::process::Command::new("/usr/bin/sudo")
-            .args(["-n", "-v"])
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false);
+        crate::modules::macos_platform::has_authorization().await
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -1917,84 +1915,31 @@ pub async fn is_admin() -> bool {
 
 /// 一键添加防火墙放行规则（按程序放行，覆盖该程序所有端口）
 ///
-/// 为 MCTier 主程序与 easytier-core 添加入站/出站允许规则。需要管理员权限。
+/// 为 MCTier 主程序与 easytier-core 添加入站/出站允许规则。
 #[tauri::command]
 pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, String> {
     #[cfg(windows)]
     {
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        // 收集要放行的程序路径：MCTier 主程序 + easytier-core
-        let mut programs: Vec<(String, std::path::PathBuf)> = Vec::new();
-        if let Ok(exe) = std::env::current_exe() {
-            programs.push(("MCTier".to_string(), exe));
-        }
-        if let Ok(et) =
-            crate::modules::resource_manager::ResourceManager::get_easytier_path(&app_handle)
+        // 开发模式：跳过防火墙规则添加
+        #[cfg(debug_assertions)]
         {
-            programs.push(("MCTier-EasyTier".to_string(), et));
+            log::info!("🔧 开发模式 - 跳过防火墙规则添加");
+            let _ = app_handle;
+            return Ok("开发模式：已跳过防火墙配置".to_string());
         }
 
-        if programs.is_empty() {
-            return Err("无法确定程序路径".to_string());
-        }
-
-        let mut added = 0;
-        let mut last_err = String::new();
-        for (base_name, path) in &programs {
-            let path_str = path.to_string_lossy().to_string();
-            for (suffix, dir) in [("-in", "in"), ("-out", "out")] {
-                let rule_name = format!("{}{}", base_name, suffix);
-                // 先删除同名旧规则避免重复堆积
-                let _ = tokio::process::Command::new(windows_system_command("netsh.exe"))
-                    .args([
-                        "advfirewall",
-                        "firewall",
-                        "delete",
-                        "rule",
-                        &format!("name={}", rule_name),
-                    ])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output()
-                    .await;
-
-                let output = tokio::process::Command::new(windows_system_command("netsh.exe"))
-                    .args([
-                        "advfirewall",
-                        "firewall",
-                        "add",
-                        "rule",
-                        &format!("name={}", rule_name),
-                        &format!("dir={}", dir),
-                        "action=allow",
-                        &format!("program={}", path_str),
-                        "enable=yes",
-                        "profile=any",
-                    ])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .output()
-                    .await
-                    .map_err(|e| format!("执行 netsh 失败: {}", e))?;
-
-                if output.status.success() {
-                    added += 1;
-                } else {
-                    last_err = String::from_utf8_lossy(&output.stderr).to_string();
-                    if last_err.trim().is_empty() {
-                        last_err = String::from_utf8_lossy(&output.stdout).to_string();
-                    }
-                }
-            }
-        }
-
-        if added > 0 {
-            log::info!("✅ 已添加 {} 条防火墙放行规则", added);
-            Ok(format!("已添加 {} 条防火墙放行规则", added))
-        } else {
-            Err(format!(
-                "添加防火墙规则失败（可能需要管理员权限）: {}",
-                last_err
-            ))
+        // 生产模式：通过 privileged helper 添加规则
+        #[cfg(not(debug_assertions))]
+        {
+            let easytier_path =
+                crate::modules::resource_manager::ResourceManager::get_easytier_path(&app_handle)
+                    .map_err(|e| e.to_string())?;
+            let value = crate::modules::privileged_helper::run_one_shot(
+                crate::modules::privileged_helper::HelperRequest::AddFirewall {
+                    easytier_path: easytier_path.to_string_lossy().into_owned(),
+                },
+            )?;
+            Ok(value.unwrap_or_else(|| "防火墙规则已更新".to_string()))
         }
     }
     #[cfg(target_os = "linux")]
@@ -2015,90 +1960,15 @@ pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, 
 pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        let exe = std::env::current_exe().map_err(|e| format!("无法获取程序路径: {}", e))?;
-        // Keep the executable path out of PowerShell source. Passing it via an
-        // environment variable prevents quote/command substitution when an
-        // installation directory contains PowerShell metacharacters.
-        let powershell = windows_system_command("WindowsPowerShell\\v1.0\\powershell.exe");
-        let spawn = std::process::Command::new(powershell)
-            .args([
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                "Start-Process -FilePath $env:MCTIER_EXE -Verb RunAs",
-            ])
-            .env("MCTIER_EXE", &exe)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
-
-        match spawn {
-            Ok(_) => {
-                log::info!("已请求以管理员身份重启，当前实例即将退出");
-                // 稍等片刻让新进程的 UAC 弹出
-                tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-                app_handle.exit(0);
-                Ok(())
-            }
-            Err(e) => Err(format!("以管理员身份重启失败: {}", e)),
-        }
+        let _ = app_handle;
+        Err("MCTier 主程序以普通权限运行，特权操作会单独请求 UAC".to_string())
     }
     #[cfg(target_os = "macos")]
     {
         let _ = app_handle;
-        // 只缓存一次 sudo 授权，不以 root 重启整个 GUI（否则配置目录和
-        // WebView 的用户权限会变成 root）。真正启动 EasyTier 时由网络服务
-        // 通过 sudo 继承这次授权。
-        use std::process::Stdio;
-        use tokio::io::AsyncWriteExt;
-
-        let prompt_script = r#"
-display dialog "MCTier 需要管理员权限来创建 macOS 虚拟网卡。请输入登录密码以继续。" with title "MCTier 网络授权" default answer "" with hidden answer buttons {"取消", "继续"} default button "继续" cancel button "取消"
-text returned of result
-"#;
-        let prompt = tokio::process::Command::new("/usr/bin/osascript")
-            .args(["-e", prompt_script])
-            .output()
+        crate::modules::macos_platform::ensure_authorized()
             .await
-            .map_err(|e| format!("无法打开 macOS 管理员授权对话框：{}", e))?;
-        if !prompt.status.success() {
-            return Err("已取消 macOS 管理员授权".to_string());
-        }
-        let password = String::from_utf8(prompt.stdout)
-            .map_err(|_| "macOS 管理员密码格式无效".to_string())?
-            .trim_end_matches(&['\r', '\n'][..])
-            .to_string();
-        if password.is_empty() {
-            return Err("未输入 macOS 管理员密码".to_string());
-        }
-
-        let mut sudo = tokio::process::Command::new("/usr/bin/sudo");
-        sudo.args(["-S", "-p", "", "-v"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-        let mut child = sudo
-            .spawn()
-            .map_err(|e| format!("启动 macOS 授权失败：{}", e))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(format!("{}\n", password).as_bytes())
-                .await
-                .map_err(|e| format!("发送 macOS 管理员授权失败：{}", e))?;
-        }
-        let output = child
-            .wait_with_output()
-            .await
-            .map_err(|e| format!("等待 macOS 管理员授权失败：{}", e))?;
-        if output.status.success() {
-            log::info!("macOS sudo 授权已缓存，后续 EasyTier 启动将使用该授权");
-            Ok(())
-        } else {
-            Err("macOS 管理员密码不正确或当前账户没有管理员权限".to_string())
-        }
+            .map_err(|e| e.to_string())
     }
     // Linux 没有"以管理员重启整个应用"这一步 —— 应用本体本来就不需要 root。
     // 前端这条"一键修复"在 Linux 上真正要做的是给 EasyTier 补 TUN 文件能力，
@@ -2148,7 +2018,13 @@ pub async fn ping_virtual_ip(ip: String) -> Result<bool, String> {
             .map_err(|e| format!("执行 ping 失败: {}", e))?
     };
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    let output = Command::new("/sbin/ping")
+        .args(["-c", "2", "-W", "1000", &target])
+        .output()
+        .map_err(|e| format!("执行 ping 失败: {}", e))?;
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     let output = Command::new(unix_system_command("ping")?)
         .args(["-c", "2", "-W", "1", &target])
         .output()
@@ -2321,7 +2197,7 @@ pub async fn check_auto_start() -> Result<bool, String> {
 /// 添加玩家域名映射到hosts文件
 ///
 /// # 参数
-/// * `domain` - 域名（如：qyzz.mct.net）
+/// * `player_id` - 信令身份指纹；域名由本地从该指纹派生
 /// * `ip` - 虚拟IP地址
 /// * `state` - 应用状态
 ///
@@ -2330,11 +2206,13 @@ pub async fn check_auto_start() -> Result<bool, String> {
 /// * `Err(String)` - 错误信息
 #[tauri::command]
 pub async fn add_player_domain(
-    domain: String,
+    player_id: String,
     ip: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    log::info!("收到添加玩家域名映射命令: {} -> {}", domain, ip);
+    let domain = crate::modules::hosts_manager::HostsManager::domain_for_identity(&player_id)
+        .map_err(|error| format!("身份域名派生失败: {}", error))?;
+    log::info!("收到添加玩家身份域名映射命令: {} -> {}", player_id, ip);
 
     let core = state.core.lock().await;
     let lobby_manager = core.get_lobby_manager();
@@ -2384,7 +2262,7 @@ pub async fn add_player_domain(
 /// 删除玩家域名映射
 ///
 /// # 参数
-/// * `domain` - 要删除的域名
+/// * `player_id` - 信令身份指纹；域名由本地从该指纹派生
 /// * `state` - 应用状态
 ///
 /// # 返回
@@ -2392,10 +2270,12 @@ pub async fn add_player_domain(
 /// * `Err(String)` - 错误信息
 #[tauri::command]
 pub async fn remove_player_domain(
-    domain: String,
+    player_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    log::info!("收到删除玩家域名映射命令: {}", domain);
+    let domain = crate::modules::hosts_manager::HostsManager::domain_for_identity(&player_id)
+        .map_err(|error| format!("身份域名派生失败: {}", error))?;
+    log::info!("收到删除玩家身份域名映射命令: {}", player_id);
 
     let core = state.core.lock().await;
     let lobby_manager = core.get_lobby_manager();
@@ -5252,6 +5132,78 @@ pub async fn prepare_p2p_chat_identity(state: State<'_, AppState>) -> Result<Str
     };
     let key = chat_service.lock().await.ensure_signing_key();
     key
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignalingIdentity {
+    pub client_id: String,
+    pub identity_public_key: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignalingRegistrationProof {
+    pub client_id: String,
+    pub identity_public_key: String,
+    pub challenge_signature: String,
+}
+
+#[tauri::command]
+pub async fn prepare_signaling_identity(
+    state: State<'_, AppState>,
+) -> Result<SignalingIdentity, String> {
+    let chat_service = {
+        let core = state.core.lock().await;
+        core.get_chat_service()
+    };
+    let (client_id, identity_public_key) = chat_service.lock().await.signaling_identity()?;
+    Ok(SignalingIdentity {
+        client_id,
+        identity_public_key,
+    })
+}
+
+#[tauri::command]
+pub async fn sign_signaling_registration(
+    challenge: String,
+    lobby_name: String,
+    virtual_ip: String,
+    state: State<'_, AppState>,
+) -> Result<SignalingRegistrationProof, String> {
+    if challenge.len() != 64
+        || !challenge
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err("信令 challenge 格式无效".to_string());
+    }
+    if lobby_name.is_empty()
+        || lobby_name.chars().count() > 128
+        || lobby_name
+            .chars()
+            .any(|ch| ch == '\r' || ch == '\n' || ch == '\0')
+    {
+        return Err("大厅名称不适合用于信令签名".to_string());
+    }
+    let normalized_ip = virtual_ip
+        .parse::<std::net::Ipv4Addr>()
+        .map_err(|_| "虚拟 IP 格式无效".to_string())?
+        .to_string();
+
+    let chat_service = {
+        let core = state.core.lock().await;
+        core.get_chat_service()
+    };
+    let (client_id, identity_public_key, challenge_signature) = chat_service
+        .lock()
+        .await
+        .sign_signaling_registration(&challenge, &lobby_name, &normalized_ip)?;
+    Ok(SignalingRegistrationProof {
+        client_id,
+        identity_public_key,
+        challenge_signature,
+    })
 }
 
 #[tauri::command]
