@@ -197,12 +197,9 @@ impl HostsManager {
 
     /// 写入 hosts 文件内容（三处写回共用）。
     ///
-    /// 优先直接写；无权限时在类 Unix 上通过 polkit（`pkexec`）提权覆盖。
-    ///
-    /// 安全要点：提权命令用 **argv 数组**调用 `cp`，绝不把路径拼进 `sh -c`
-    /// 字符串。临时目录路径可能含空格、引号甚至 `$(...)`，一旦经过 shell 解析
-    /// 就是一个以 root 执行的命令注入点。`cp` 收到的两个参数始终是独立 argv，
-    /// 内容再怪也只会被当成文件名。
+    /// Windows 使用受控 helper；macOS 使用系统授权对话框；Linux 在直接
+    /// 写入失败时通过 polkit 提权。路径分别使用独立 argv 或 AppleScript
+    /// 的 quoted form 转义，临时文件禁止跟随符号链接。
     fn write_hosts_file(path: &std::path::Path, content: &str) -> Result<(), AppError> {
         #[cfg(windows)]
         {
@@ -211,7 +208,7 @@ impl HostsManager {
             {
                 let _ = (path, content);
                 log::info!("🔧 开发模式 - 跳过 hosts 文件写入");
-                return Ok(());
+                Ok(())
             }
 
             // 生产模式：通过 privileged helper 写入
@@ -282,7 +279,7 @@ end run"#;
                 Ok(())
             })();
             let _ = std::fs::remove_file(&temp_path);
-            return result;
+            result
         }
 
         #[cfg(not(any(windows, target_os = "macos")))]
@@ -294,7 +291,7 @@ end run"#;
                     Ok(())
                 }
                 Err(open_error) => {
-                    // Linux/macOS：应用本体以普通用户运行，/etc/hosts 需要一次 polkit 授权。
+                    // Linux：应用本体以普通用户运行，/etc/hosts 需要一次 polkit 授权。
                     log::info!("🔐 [HostsManager] 无直接写权限，请求 pkexec 授权写入 hosts");
 
                     // 临时文件放在私有目录并用 0o644，避免其它用户在覆盖前篡改内容

@@ -159,11 +159,11 @@ impl ResourceManager {
     pub fn get_runtime_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         #[cfg(windows)]
         {
-            return app_handle
+            app_handle
                 .path()
                 .resource_dir()
                 .map(|path| path.join("runtime"))
-                .map_err(|e| AppError::ConfigError(format!("无法获取资源目录: {}", e)));
+                .map_err(|e| AppError::ConfigError(format!("无法获取资源目录: {}", e)))
         }
 
         #[cfg(not(windows))]
@@ -301,18 +301,13 @@ impl ResourceManager {
             }
         }
 
-        for candidate in candidates {
-            if fs::symlink_metadata(&candidate)
+        candidates.into_iter().find(|candidate| {
+            fs::symlink_metadata(candidate)
                 .ok()
                 .is_some_and(|metadata| {
                     !Self::is_link_or_reparse_point(&metadata) && metadata.is_file()
                 })
-            {
-                return Some(candidate);
-            }
-        }
-
-        None
+        })
     }
 
     /// 获取运行时目录（用于存放提取的二进制文件）

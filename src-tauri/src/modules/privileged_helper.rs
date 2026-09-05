@@ -80,7 +80,7 @@ pub struct HelperSession {
 impl HelperSession {
     pub async fn stop(&self) -> Result<(), String> {
         let mut writer = self.writer.lock().await;
-        write_async_json(&mut *writer, &HelperRequest::StopEasyTier).await
+        write_async_json(&mut writer, &HelperRequest::StopEasyTier).await
     }
 }
 
@@ -177,7 +177,7 @@ pub fn run_one_shot(request: HelperRequest) -> Result<Option<String>, String> {
     launch_elevated_helper(port, &token)?;
 
     let deadline = Instant::now() + Duration::from_secs(10);
-    let mut stream = loop {
+    let stream = loop {
         if Instant::now() >= deadline {
             return Err("等待特权 helper 响应超时，请确认已允许 UAC 请求".to_string());
         }
@@ -266,7 +266,6 @@ fn write_json<W: Write>(writer: &mut W, request: &HelperRequest) -> Result<(), S
 
 fn launch_elevated_helper(port: u16, token: &str) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
-    use std::os::windows::process::CommandExt;
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
@@ -371,7 +370,6 @@ fn helper_main(port: u16, token: String) -> Result<(), String> {
                         code: status.code(),
                     },
                 )?;
-                child = None;
                 break;
             }
         }
@@ -510,12 +508,6 @@ fn validate_easytier_layout(
     working_dir: &Path,
     config_dir: &Path,
 ) -> Result<(), String> {
-    // 🔧 开发模式：跳过路径验证
-    #[cfg(debug_assertions)]
-    {
-        log::warn!("⚠️ 开发模式：跳过 EasyTier 路径安全检查");
-        return Ok(());
-    }
     let executable_dir = std::env::current_exe()
         .map_err(|e| format!("无法获取 MCTier 安装目录: {}", e))?
         .parent()
@@ -535,9 +527,7 @@ fn validate_easytier_layout(
         }
         runtimes
     };
-    #[cfg(not(debug_assertions))]
-    let allowed_runtimes = allowed_runtimes;
-    if executable != &working_dir.join("easytier-core.exe")
+    if executable != working_dir.join("easytier-core.exe")
         || !allowed_runtimes.iter().any(|path| path == working_dir)
     {
         return Err("EasyTier 运行路径不在受控 runtime 目录中".to_string());
@@ -842,7 +832,7 @@ fn validate_easy_path(path: &Path) -> Result<(), String> {
         fs::create_dir_all(runtime)
             .map_err(|e| format!("创建 EasyTier runtime 目录失败: {}", e))?;
     }
-    if path != &runtime.join("easytier-core.exe") {
+    if path != runtime.join("easytier-core.exe") {
         return Err("防火墙规则中的 EasyTier 路径不受控".to_string());
     }
     ResourceManager::ensure_embedded_file_at(path, "easytier-core.exe")

@@ -1846,7 +1846,7 @@ pub async fn check_firewall_rules() -> Result<bool, String> {
         #[cfg(debug_assertions)]
         {
             log::info!("🔧 开发模式 - 跳过防火墙规则检查");
-            return Ok(true);
+            Ok(true)
         }
 
         // 生产模式：通过 privileged helper 检查
@@ -1925,7 +1925,7 @@ pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, 
         {
             log::info!("🔧 开发模式 - 跳过防火墙规则添加");
             let _ = app_handle;
-            return Ok("开发模式：已跳过防火墙配置".to_string());
+            Ok("开发模式：已跳过防火墙配置".to_string())
         }
 
         // 生产模式：通过 privileged helper 添加规则

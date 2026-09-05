@@ -605,7 +605,7 @@ impl NetworkService {
         #[cfg(not(windows))]
         {
             log::info!("正在清理旧的配置目录...");
-            if let Ok(entries) = std::fs::read_dir(&working_dir) {
+            if let Ok(entries) = std::fs::read_dir(working_dir) {
                 for entry in entries.flatten() {
                     if let Ok(file_name) = entry.file_name().into_string() {
                         // 只清理以 config_mctier- 开头的目录
@@ -1312,9 +1312,12 @@ impl NetworkService {
         }
         #[cfg(target_os = "macos")]
         {
-            return "EasyTier 进程意外终止：可能是 macOS 管理员授权被取消、虚拟网卡创建失败或网络过滤器拦截，请重新连接并在提示中授权".to_string();
+            "EasyTier 进程意外终止：可能是 macOS 管理员授权被取消、虚拟网卡创建失败或网络过滤器拦截，请重新连接并在提示中授权".to_string()
         }
-        "EasyTier 进程意外终止：可能被安全软件拦截、虚拟网卡创建失败或缺少运行库，请尝试以管理员身份运行并将本软件加入安全软件白名单".to_string()
+        #[cfg(not(target_os = "macos"))]
+        {
+            "EasyTier 进程意外终止：可能被安全软件拦截、虚拟网卡创建失败或缺少运行库，请尝试以管理员身份运行并将本软件加入安全软件白名单".to_string()
+        }
     }
 
     fn redact_sensitive_line(line: &str) -> String {
@@ -1400,7 +1403,7 @@ impl NetworkService {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(all(windows, not(debug_assertions)))]
     async fn handle_helper_output(
         line: &str,
         is_stderr: bool,
