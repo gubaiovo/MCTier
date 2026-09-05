@@ -24,6 +24,7 @@ APPLE_SIGNING_IDENTITY=- npm run tauri build -- --bundles app,dmg
 - EasyTier 的控制管道由 GUI 持有。离开大厅、取消连接或 GUI 异常退出会关闭管道，由监督进程终止自己的子进程，无需再次使用 sudo，也不会按进程名终止其他 EasyTier 实例。
 - macOS 自动分配 `utunN` 网卡名；不使用 Windows 的 `MCTier_Net`、Wintun 或 WinDivert 驱动。Ping 超时使用 macOS 的毫秒单位。
 - 开启虚拟域名时，hosts 写入通过 macOS 原生管理员授权执行并刷新 DNS；不会调用 Linux 的 `pkexec`。
+- 文件授权和 ZIP 解压识别 macOS 的 `/var`、`/tmp`、`/etc` 系统链接，仅允许 root 所有且指向对应 `/private/` 目录的固定映射，仍拒绝用户创建的目录链接及 ZIP 路径越界。
 - 麦克风、摄像头及本地网络使用目的已在 Info.plist 声明；音视频签名权限在 Entitlements.plist 中配置。拒绝过麦克风权限时，在系统设置中重新允许 MCTier 使用麦克风。
 - 屏幕共享依赖当前 WKWebView 的 `getDisplayMedia` 能力，缺失时会给出错误提示，接收共享不受此限制。macOS 的远程输入注入尚未实现，因此会在开始捕获前拒绝成为被控端；仍可作为控制端。
 - 点击 Dock 图标会恢复隐藏的主窗口。

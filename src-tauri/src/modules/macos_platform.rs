@@ -1,13 +1,28 @@
 //! macOS tunnel authorization and lifetime management. The GUI stays unprivileged.
 
 use crate::modules::error::AppError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::Mutex;
 
 static TUNNEL_CONTROL: Mutex<Option<ChildStdin>> = Mutex::const_new(None);
+
+/// macOS exposes these root-owned directories through fixed system links.
+/// Do not canonicalize arbitrary user paths: all other links stay forbidden.
+pub fn is_system_directory_alias(path: &Path, metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let target = match path.to_str() {
+        Some("/var") => "/private/var",
+        Some("/tmp") => "/private/tmp",
+        Some("/etc") => "/private/etc",
+        _ => return false,
+    };
+    metadata.uid() == 0
+        && metadata.file_type().is_symlink()
+        && std::fs::read_link(path).is_ok_and(|link| Path::new("/").join(link) == Path::new(target))
+}
 
 fn is_root() -> bool {
     unsafe { libc::geteuid() == 0 }
@@ -123,4 +138,23 @@ pub async fn spawn_tunnel(cmd: Command) -> Result<Child, AppError> {
 /// The OS closes the same pipe if the GUI crashes.
 pub async fn stop_tunnel() {
     TUNNEL_CONTROL.lock().await.take();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_fixed_system_directory_links_are_trusted() {
+        for alias in ["/var", "/tmp", "/etc"] {
+            let path = Path::new(alias);
+            let metadata = std::fs::symlink_metadata(path).expect("system alias exists");
+            assert!(is_system_directory_alias(path, &metadata), "{alias}");
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let link = temp.path().join("var");
+        std::os::unix::fs::symlink("/private/var", &link).unwrap();
+        let metadata = std::fs::symlink_metadata(&link).unwrap();
+        assert!(!is_system_directory_alias(&link, &metadata));
+    }
 }

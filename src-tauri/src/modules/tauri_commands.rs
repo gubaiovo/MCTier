@@ -333,6 +333,10 @@ fn ensure_existing_path_has_no_links(path: &std::path::Path) -> Result<(), Strin
         let metadata = std::fs::symlink_metadata(&current)
             .map_err(|e| format!("检查路径失败 {}: {}", current.display(), e))?;
         if is_symlink_or_reparse_point(&metadata) {
+            #[cfg(target_os = "macos")]
+            if crate::modules::macos_platform::is_system_directory_alias(&current, &metadata) {
+                continue;
+            }
             return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
         }
     }
@@ -4322,6 +4326,10 @@ fn ensure_no_link_components(path: &std::path::Path) -> Result<(), String> {
         current.push(component.as_os_str());
         match std::fs::symlink_metadata(&current) {
             Ok(metadata) if is_symlink_or_reparse_point(&metadata) => {
+                #[cfg(target_os = "macos")]
+                if crate::modules::macos_platform::is_system_directory_alias(&current, &metadata) {
+                    continue;
+                }
                 return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
             }
             Ok(_) => {}
@@ -4633,6 +4641,32 @@ mod path_security_tests {
 
         assert!(require_existing_file_grant(path, PathAccess::ReadFile).is_err());
         register_path_grant(path, PathAccess::ReadFile, false).expect("register read grant");
+        assert!(require_existing_file_grant(path, PathAccess::ReadFile).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_grants_reject_user_created_directory_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let directory = temp.path().join("real");
+        std::fs::create_dir(&directory).expect("create real directory");
+        std::fs::write(directory.join("safe.txt"), b"safe").expect("create file");
+        let link = temp.path().join("alias");
+        symlink(&directory, &link).expect("create directory symlink");
+        let path = link.join("safe.txt");
+        assert!(register_path_grant(path.to_str().unwrap(), PathAccess::ReadFile, false).is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn file_grants_accept_macos_system_tmp_alias() {
+        let temp = tempfile::tempdir_in("/tmp").expect("create temp dir through system alias");
+        let path = temp.path().join("safe.txt");
+        std::fs::write(&path, b"safe").expect("create file");
+        let path = path.to_str().unwrap();
+        register_path_grant(path, PathAccess::ReadFile, false).expect("register through /tmp");
         assert!(require_existing_file_grant(path, PathAccess::ReadFile).is_ok());
     }
 

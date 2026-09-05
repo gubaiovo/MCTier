@@ -2140,14 +2140,19 @@ mod tests {
             Some("true")
         );
 
-        let dev_name_index = args
-            .iter()
-            .position(|arg| arg == "--dev-name")
-            .expect("dev-name argument should be present");
-        assert_eq!(
-            args.get(dev_name_index + 1).map(String::as_str),
-            Some("MCTier_Net")
-        );
+        #[cfg(target_os = "macos")]
+        assert!(!args.iter().any(|arg| arg == "--dev-name"));
+        #[cfg(not(target_os = "macos"))]
+        {
+            let dev_name_index = args
+                .iter()
+                .position(|arg| arg == "--dev-name")
+                .expect("dev-name argument should be present");
+            assert_eq!(
+                args.get(dev_name_index + 1).map(String::as_str),
+                Some("MCTier_Net")
+            );
+        }
     }
 
     // ========== 创建大厅流程 - EasyTier 启动测试 ==========
