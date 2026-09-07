@@ -8,11 +8,12 @@
   <p>
     <img src="https://img.shields.io/badge/version-3.0.0-blue?style=flat-square" alt="Version">
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2ea44f?style=flat-square" alt="Windows 10/11">
+    <img src="https://img.shields.io/badge/macOS-12%2B-black?style=flat-square" alt="macOS 12+">
     <img src="https://img.shields.io/badge/Android-supported-3ddc84?style=flat-square" alt="Android">
     <img src="https://img.shields.io/badge/license-Custom-orange?style=flat-square" alt="License">
   </p>
 
-  **支持 Windows 10/11 与 Android。电脑端和手机端可加入同一个大厅，快速组成跨网络虚拟局域网。当前版本：2.7.5。**
+  **支持 Windows 10/11、macOS 12+、Linux 与 Android。电脑端和手机端可加入同一个大厅，快速组成跨网络虚拟局域网。当前版本：3.0.0。**
 
   [GitHub](https://github.com/pmh1314520/MCTier) · [Gitee](https://gitee.com/peng-minghang/mctier) · [快速开始](#快速开始) · [运行预览](#运行预览) · [赞助支持](#赞助支持)
 
@@ -162,6 +163,7 @@ MCTier 基于 EasyTier 与 WebRTC，用来把不同网络环境下的设备组�
 | 平台 | 要求 |
 | --- | --- |
 | Windows | Windows 10/11 64 位，建议 2GB 以上内存 |
+| macOS | macOS 12 或更高版本，Intel x86_64 或 Apple Silicon arm64 |
 | Linux | Debian 家族发行版（Debian / Ubuntu / Deepin / UOS / Mint），x86_64 |
 | Android | Android 手机或平板，建议 Android 8.0+ |
 | 网络 | 能访问所配置的 EasyTier 节点与 WebRTC 信令服务 |
@@ -172,6 +174,7 @@ MCTier 基于 EasyTier 与 WebRTC，用来把不同网络环境下的设备组�
 
 - Windows 安装包：下载 `MCTier_x.y.z_x64-setup.exe` 后双击安装。
 - Windows 便携版：下载 `MCTier.exe` 后直接运行。
+- macOS：按 CPU 下载 `macos-x86_64-adhoc.dmg` 或 `macos-arm64-adhoc.dmg`。当前 fork 的自动构建未做 Developer ID 签名与公证，Gatekeeper 可能要求手动允许；详见 [macOS 说明](docs/macos.md)。
 - Android：下载 `MCTier-Android.apk` 后在手机上安装。
 - Linux（Debian 家族）：构建与打包方式见 [MCTier-Linux/README.md](MCTier-Linux/README.md)。应用本体以普通用户运行，只需为 `easytier-core` 授予一次 `cap_net_admin` 能力；语音、屏幕共享与远程控制在标准 Debian 上暂不可用，逐项状态见该目录的状态矩阵。
 
@@ -235,7 +238,9 @@ docker compose -f docker-compose-http.yml logs -f
 
 ### 第一步：准备第三方二进制（首次 clone 后必做）
 
-`src-tauri/src/modules/resource_manager.rs` 通过 `include_bytes!` 在编译期内嵌 4 个第三方二进制。这些文件体积较大且受各自许可约束，因此不纳入本仓库。clone 之后必须先准备好它们，否则 `cargo build` 会因找不到文件而失败。
+`src-tauri/src/modules/resource_manager.rs` 会内嵌或随包分发目标平台的 EasyTier 二进制；Windows 还需要 `wintun.dll` 与 `WinDivert64.sys`。这些文件体积较大且受各自许可约束，因此不纳入本仓库。clone 之后必须先运行对应平台的获取脚本，否则构建会因找不到文件而失败。
+
+Windows x64：
 
 ```powershell
 # 1) 下载可直接再分发的驱动类文件（wintun.dll / WinDivert64.sys）
@@ -245,9 +250,17 @@ docker compose -f docker-compose-http.yml logs -f
 .\scripts\build-easytier-npcap-free.ps1
 ```
 
+macOS（自动识别 Intel 或 Apple Silicon，也可显式传入 `x86_64` / `arm64`）：
+
+```bash
+./scripts/fetch-macos-binaries.sh
+```
+
 第一个脚本从 EasyTier 官方 Release 下载 `easytier-windows-x86_64-v2.5.0.zip`，逐个校验 SHA-256（任一不匹配即中止），再放入 `src-tauri/resources/binaries/`。已存在且校验通过的文件会被跳过；如需强制重新获取请加 `-Force`。
 
 第二个脚本单独存在是有原因的：EasyTier 官方构建的 `easytier-core.exe` 在 PE 导入表中**静态导入** Npcap 的 `packet.dll`，而 Npcap 不是开源软件、未经 Nmap Project 书面许可不得随其他软件再分发。该脚本会克隆 EasyTier v2.5.0（同一 commit，不涉及版本升级）、应用 [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) 去掉这个导入，并在构建后解析产物导入表作为硬门槛。需要 `cargo`（MSVC 工具链）、`protoc` 与 `libclang`。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 第 8 节。
+
+macOS 脚本从 EasyTier 官方 v2.6.4 Release 下载匹配架构的压缩包，同时校验压缩包与 core/cli 的 SHA-256。
 
 ### 第二步：构建
 ```bash
@@ -255,9 +268,13 @@ npm install
 npm run tauri dev
 # 发布 Windows NSIS 安装包（推荐使用仓库内固定 Node）
 npm run tauri build -- --bundles nsis --ci
+# macOS DMG（在对应架构的 Mac 上运行）
+APPLE_SIGNING_IDENTITY=- npm run tauri build -- --config src-tauri/tauri.macos.conf.json --bundles app,dmg --ci
 ```
 
 桌面端的发布构建只生成 NSIS 安装包，避免同时生成 MSI 时重复处理离线 WebView2 安装器。仓库中的一键版本更新工具会自动准备固定 Node，并使用相同的 NSIS 参数。
+
+GitHub tag 发布、手动诊断构建、资产名称与签名限制见 [构建与发布流程](docs/ci-release.md)。
 
 Android 端源码位于：
 
@@ -324,7 +341,8 @@ Source: https://github.com/EasyTier/EasyTier
 
 | 组件 | 平台 | 版本 | Commit | 许可证 | 是否修改 |
 | --- | --- | --- | --- | --- | --- |
-| EasyTier | Windows（独立进程） | v2.5.0 | `88a45d11...` | LGPL-3.0 | 否 |
+| EasyTier | Windows（独立进程） | v2.5.0 | `88a45d11...` | LGPL-3.0 | 是（见 Npcap 补丁） |
+| EasyTier | macOS（独立进程） | v2.6.4 | `8428a89d...` | LGPL-3.0 | 否 |
 | EasyTier | Android（`.so` 动态库） | 基于 v2.6.0 | `79b562cd...` | LGPL-3.0 | 是（见补丁） |
 
 相关文件：

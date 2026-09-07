@@ -333,7 +333,14 @@ fn ensure_existing_path_has_no_links(path: &std::path::Path) -> Result<(), Strin
         let metadata = std::fs::symlink_metadata(&current)
             .map_err(|e| format!("检查路径失败 {}: {}", current.display(), e))?;
         if is_symlink_or_reparse_point(&metadata) {
-            return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
+            #[cfg(target_os = "macos")]
+            let allowed_alias =
+                crate::modules::macos_platform::is_system_directory_alias(&current, &metadata);
+            #[cfg(not(target_os = "macos"))]
+            let allowed_alias = false;
+            if !allowed_alias {
+                return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
+            }
         }
     }
     Ok(())
@@ -1741,7 +1748,15 @@ pub async fn cancel_lobby_connecting() -> Result<(), String> {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        // The supervisor owns the EasyTier child. Closing its control pipe asks
+        // it to terminate only this instance, without killing unrelated users'
+        // EasyTier processes by name.
+        crate::modules::macos_platform::stop_tunnel().await;
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let pkill = unix_system_command("pkill")?;
         let _ = tokio::process::Command::new(pkill)
@@ -1755,6 +1770,40 @@ pub async fn cancel_lobby_connecting() -> Result<(), String> {
 }
 
 // ==================== 网络诊断命令 ====================
+
+#[cfg(target_os = "macos")]
+fn is_mctier_virtual_ipv4(value: &str) -> bool {
+    let Ok(address) = value.parse::<std::net::Ipv4Addr>() else {
+        return false;
+    };
+    let octets = address.octets();
+    octets[..3] == [10, 126, 126] && (1..=254).contains(&octets[3])
+}
+
+#[cfg(target_os = "macos")]
+fn has_mctier_utun_ipv4(ifconfig: &str) -> bool {
+    let mut in_mctier_utun = false;
+    for line in ifconfig.lines() {
+        let is_indented = line
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| *byte == b' ' || *byte == b'\t');
+        if !is_indented {
+            let interface = line.split(':').next().unwrap_or_default();
+            in_mctier_utun = interface
+                .strip_prefix("utun")
+                .and_then(|suffix| suffix.parse::<u32>().ok())
+                .is_some();
+        }
+        if in_mctier_utun && line.trim_start().starts_with("inet ") {
+            let address = line.split_whitespace().nth(1).unwrap_or_default();
+            if is_mctier_virtual_ipv4(address) {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 /// 检查虚拟网卡是否存在
 ///
@@ -1798,7 +1847,23 @@ pub async fn check_virtual_adapter() -> Result<bool, String> {
         Ok(has_adapter)
     }
 
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        // EasyTier asks macOS for an automatically assigned utunN interface.
+        // Require MCTier's fixed virtual subnet so another VPN's utun cannot
+        // produce a false positive.
+        let output = std::process::Command::new("/sbin/ifconfig")
+            .output()
+            .map_err(|e| format!("执行 ifconfig 失败: {}", e))?;
+        if !output.status.success() {
+            return Err(format!("ifconfig 失败: {}", output.status));
+        }
+        let has_adapter = has_mctier_utun_ipv4(&String::from_utf8_lossy(&output.stdout));
+        log::info!("macOS utun 虚拟网卡检查结果: {}", has_adapter);
+        Ok(has_adapter)
+    }
+
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         // 其余平台尚未适配虚拟网卡检测，返回 true 避免阻断流程
         Ok(true)
@@ -1826,16 +1891,16 @@ pub async fn check_firewall_rules() -> Result<bool, String> {
         // 生产模式：通过 privileged helper 检查
         #[cfg(not(debug_assertions))]
         {
-        let has_rules = crate::modules::privileged_helper::run_one_shot(
-            crate::modules::privileged_helper::HelperRequest::CheckFirewall,
-        )?
-        .and_then(|value| value.parse::<bool>().ok())
-        .unwrap_or(false);
+            let has_rules = crate::modules::privileged_helper::run_one_shot(
+                crate::modules::privileged_helper::HelperRequest::CheckFirewall,
+            )?
+            .and_then(|value| value.parse::<bool>().ok())
+            .unwrap_or(false);
 
-        log::info!("防火墙规则检查结果: {}", has_rules);
-        Ok(has_rules)
-    }
+            log::info!("防火墙规则检查结果: {}", has_rules);
+            Ok(has_rules)
         }
+    }
 
     #[cfg(target_os = "linux")]
     {
@@ -1877,7 +1942,11 @@ pub async fn is_admin() -> bool {
             ok.is_ok() && elevation.TokenIsElevated != 0
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        crate::modules::macos_platform::has_authorization().await
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         true
     }
@@ -1900,17 +1969,17 @@ pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, 
         // 生产模式：通过 privileged helper 添加规则
         #[cfg(not(debug_assertions))]
         {
-        let easytier_path =
-            crate::modules::resource_manager::ResourceManager::get_easytier_path(&app_handle)
-                .map_err(|e| e.to_string())?;
-        let value = crate::modules::privileged_helper::run_one_shot(
-            crate::modules::privileged_helper::HelperRequest::AddFirewall {
-                easytier_path: easytier_path.to_string_lossy().into_owned(),
-            },
-        )?;
-        Ok(value.unwrap_or_else(|| "防火墙规则已更新".to_string()))
-    }
+            let easytier_path =
+                crate::modules::resource_manager::ResourceManager::get_easytier_path(&app_handle)
+                    .map_err(|e| e.to_string())?;
+            let value = crate::modules::privileged_helper::run_one_shot(
+                crate::modules::privileged_helper::HelperRequest::AddFirewall {
+                    easytier_path: easytier_path.to_string_lossy().into_owned(),
+                },
+            )?;
+            Ok(value.unwrap_or_else(|| "防火墙规则已更新".to_string()))
         }
+    }
     #[cfg(target_os = "linux")]
     {
         let _ = app_handle;
@@ -1932,6 +2001,13 @@ pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String
         let _ = app_handle;
         Err("MCTier 主程序以普通权限运行，特权操作会单独请求 UAC".to_string())
     }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app_handle;
+        crate::modules::macos_platform::ensure_authorized()
+            .await
+            .map_err(|e| e.to_string())
+    }
     // Linux 没有"以管理员重启整个应用"这一步 —— 应用本体本来就不需要 root。
     // 前端这条"一键修复"在 Linux 上真正要做的是给 EasyTier 补 TUN 文件能力，
     // 所以这里复用同一入口，成功后不重启进程。
@@ -1942,7 +2018,7 @@ pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String
         Ok(())
     }
 
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         let _ = app_handle;
         Err("当前平台不支持".to_string())
@@ -1980,7 +2056,13 @@ pub async fn ping_virtual_ip(ip: String) -> Result<bool, String> {
             .map_err(|e| format!("执行 ping 失败: {}", e))?
     };
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    let output = Command::new("/sbin/ping")
+        .args(["-c", "2", "-W", "1000", &target])
+        .output()
+        .map_err(|e| format!("执行 ping 失败: {}", e))?;
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     let output = Command::new(unix_system_command("ping")?)
         .args(["-c", "2", "-W", "1", &target])
         .output()
@@ -4276,6 +4358,10 @@ fn ensure_no_link_components(path: &std::path::Path) -> Result<(), String> {
         current.push(component.as_os_str());
         match std::fs::symlink_metadata(&current) {
             Ok(metadata) if is_symlink_or_reparse_point(&metadata) => {
+                #[cfg(target_os = "macos")]
+                if crate::modules::macos_platform::is_system_directory_alias(&current, &metadata) {
+                    continue;
+                }
                 return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
             }
             Ok(_) => {}
@@ -4630,6 +4716,33 @@ mod path_security_tests {
                 "accepted {path:?}"
             );
         }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_adapter_tests {
+    use super::has_mctier_utun_ipv4;
+
+    #[test]
+    fn adapter_probe_requires_mctier_subnet_on_utun() {
+        let ifconfig = "en0: flags=8863<UP>\n    inet 10.126.126.99 netmask 0xffffff00\n\n"
+            .to_owned()
+            + "utun4: flags=8051<UP,POINTOPOINT,RUNNING>\n"
+            + "    inet 10.126.126.42 --> 10.126.126.42 netmask 0xffffff00\n"
+            + "utun5: flags=8051<UP,POINTOPOINT,RUNNING>\n"
+            + "    inet 192.168.1.20 --> 192.168.1.20 netmask 0xffffff00\n";
+
+        assert!(has_mctier_utun_ipv4(&ifconfig));
+    }
+
+    #[test]
+    fn adapter_probe_rejects_other_vpn_and_invalid_mctier_addresses() {
+        let ifconfig = "utun5: flags=8051<UP,POINTOPOINT,RUNNING>\n".to_owned()
+            + "    inet 192.168.1.20 --> 192.168.1.20 netmask 0xffffff00\n"
+            + "utun6: flags=8051<UP,POINTOPOINT,RUNNING>\n"
+            + "    inet 10.126.126.255 --> 10.126.126.255 netmask 0xffffff00\n";
+
+        assert!(!has_mctier_utun_ipv4(&ifconfig));
     }
 }
 

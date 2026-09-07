@@ -8,12 +8,13 @@
   <p>
     <img src="https://img.shields.io/badge/version-3.0.0-blue?style=flat-square" alt="Version">
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2ea44f?style=flat-square" alt="Windows 10/11">
+    <img src="https://img.shields.io/badge/macOS-12%2B-black?style=flat-square" alt="macOS 12+">
     <img src="https://img.shields.io/badge/Android-supported-3ddc84?style=flat-square" alt="Android">
     <img src="https://img.shields.io/badge/license-Custom-orange?style=flat-square" alt="License">
   </p>
 
 
-  **Supports Windows 10/11 and Android. Desktop and mobile can join the same lobby to quickly form a cross-network virtual LAN. Current version: 2.7.5.**
+  **Supports Windows 10/11, macOS 12+, Linux and Android. Desktop and mobile can join the same lobby to quickly form a cross-network virtual LAN. Current version: 3.0.0.**
 
   [GitHub](https://github.com/pmh1314520/MCTier) · [Gitee](https://gitee.com/peng-minghang/mctier) · [Quick Start](#quick-start) · [Screenshots](#screenshots) · [Sponsor](#sponsor)
 
@@ -163,6 +164,7 @@ Screenshots are grouped by desktop and mobile and laid out compactly to avoid an
 | Platform | Requirements |
 | --- | --- |
 | Windows | Windows 10/11 64-bit, 2GB+ RAM recommended |
+| macOS | macOS 12 or later, Intel x86_64 or Apple Silicon arm64 |
 | Linux | Debian-family distributions (Debian / Ubuntu / Deepin / UOS / Mint), x86_64 |
 | Android | Android phone or tablet, Android 8.0+ recommended |
 | Network | Able to reach the configured EasyTier node and WebRTC signaling server |
@@ -173,6 +175,7 @@ Download the latest build from [GitHub Releases](https://github.com/pmh1314520/M
 
 - Windows Installer: download `MCTier_x.y.z_x64-setup.exe` and double-click to install.
 - Windows Portable: download `MCTier.exe` and run it directly.
+- macOS: choose `macos-x86_64-adhoc.dmg` or `macos-arm64-adhoc.dmg` for your CPU. This fork's automated build is not Developer ID signed or notarized, so Gatekeeper may require a manual override; see the [macOS notes](docs/macos.md).
 - Android: download `MCTier-Android.apk` and install it on your phone.
 - Linux (Debian family): see [MCTier-Linux/README.md](MCTier-Linux/README.md) for build and packaging steps. The app itself runs as a normal user and only needs `cap_net_admin` granted once to `easytier-core`; voice, screen sharing and remote control are not yet usable on stock Debian — see the per-feature status matrix in that directory.
 
@@ -236,7 +239,9 @@ docker compose -f docker-compose-http.yml logs -f
 
 ### Step 1: Prepare third-party binaries (required after the first clone)
 
-`src-tauri/src/modules/resource_manager.rs` embeds 4 third-party binaries at compile time via `include_bytes!`. They are large and subject to their own licenses, so they are not tracked in this repository. After cloning you must prepare them, otherwise `cargo build` fails because the files are missing.
+`src-tauri/src/modules/resource_manager.rs` embeds or bundles the target platform's EasyTier binaries; Windows also needs `wintun.dll` and `WinDivert64.sys`. These files are large and subject to their own licenses, so they are not tracked in this repository. After cloning, run the matching fetch script before building.
+
+Windows x64:
 
 ```powershell
 # 1) Download the freely redistributable driver files (wintun.dll / WinDivert64.sys)
@@ -246,9 +251,17 @@ docker compose -f docker-compose-http.yml logs -f
 .\scripts\build-easytier-npcap-free.ps1
 ```
 
+macOS (auto-detects Intel or Apple Silicon, or accepts `x86_64` / `arm64`):
+
+```bash
+./scripts/fetch-macos-binaries.sh
+```
+
 The first script downloads `easytier-windows-x86_64-v2.5.0.zip` from the official EasyTier release, verifies the SHA-256 of every file (aborting on any mismatch), then places them into `src-tauri/resources/binaries/`. Files that already exist and pass verification are skipped; pass `-Force` to re-fetch.
 
 The second script exists for a specific reason: the official `easytier-core.exe` build **statically imports** Npcap's `packet.dll`, and Npcap is not open source software — it may not be redistributed with other software without written permission from the Nmap Project. This script clones EasyTier v2.5.0 (the same commit, so no version bump), applies [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) to drop that import, and then parses the resulting PE import table as a hard gate. It requires `cargo` (MSVC toolchain), `protoc` and `libclang`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8.
+
+The macOS script downloads the matching architecture from EasyTier's official v2.6.4 Release and verifies SHA-256 for both the archive and the core/CLI files.
 
 ### Step 2: Build
 ```bash
@@ -256,9 +269,13 @@ npm install
 npm run tauri dev
 # Build the Windows NSIS installer (recommended with the pinned Node runtime)
 npm run tauri build -- --bundles nsis --ci
+# macOS DMG (run on a Mac of the target architecture)
+APPLE_SIGNING_IDENTITY=- npm run tauri build -- --config src-tauri/tauri.macos.conf.json --bundles app,dmg --ci
 ```
 
 Desktop release builds generate the NSIS installer only. This avoids processing the offline WebView2 installer twice when MSI is also enabled. The repository's one-click version update tool prepares the pinned Node runtime and uses the same NSIS arguments.
+
+See [Build and release workflow](docs/ci-release.md) for tag publishing, manual diagnostic builds, asset names and signing limitations.
 
 The Android source code is located at:
 
@@ -329,7 +346,8 @@ Source: https://github.com/EasyTier/EasyTier
 
 | Component | Platform | Version | Commit | License | Modified |
 | --- | --- | --- | --- | --- | --- |
-| EasyTier | Windows (separate process) | v2.5.0 | `88a45d11...` | LGPL-3.0 | No |
+| EasyTier | Windows (separate process) | v2.5.0 | `88a45d11...` | LGPL-3.0 | Yes (see Npcap patch) |
+| EasyTier | macOS (separate process) | v2.6.4 | `8428a89d...` | LGPL-3.0 | No |
 | EasyTier | Android (`.so` shared libs) | based on v2.6.0 | `79b562cd...` | LGPL-3.0 | Yes (see patch) |
 
 Related files:

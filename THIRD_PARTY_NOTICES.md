@@ -5,7 +5,7 @@
 This file documents the third-party components distributed with MCTier, together with
 their licenses, upstream sources, versions and modification status.
 
-最后更新 / Last updated: 2026-08-31（对应 MCTier 3.0.0）
+最后更新 / Last updated: 2026-09-07（对应 MCTier 3.0.0）
 
 ---
 
@@ -14,6 +14,7 @@ their licenses, upstream sources, versions and modification status.
 | 组件 | 来源 | 版本 | Commit | 许可证 | 是否修改 |
 | --- | --- | --- | --- | --- | --- |
 | EasyTier (Windows `easytier-core.exe` / `easytier-cli.exe`) | https://github.com/EasyTier/EasyTier | v2.5.0 | `88a45d115670631dfe6a05ba192387d615ddb95b` | LGPL-3.0 | 是 / Yes（见 §8） |
+| EasyTier (macOS `easytier-core` / `easytier-cli`, x86_64 + aarch64) | https://github.com/EasyTier/EasyTier | v2.6.4 | `8428a89d2dabc94c97d370ec607c6ca142473626` | LGPL-3.0 | 否 / No |
 | EasyTier (Android `libeasytier_ffi.so` / `libeasytier_android_jni.so`) | https://github.com/EasyTier/EasyTier | 以 v2.6.0 为补丁基线 / patch baseline v2.6.0 | 基线 `79b562cdc9f1dc3f52195a47a02cf83542c225ab` + 本仓库补丁 | LGPL-3.0 | 是 / Yes（见 §5） |
 | Wintun (`wintun.dll`) | https://www.wintun.net | 0.14.1 | — | Wintun Prebuilt Binaries License | 否 / No（见 §7） |
 | WinDivert (`WinDivert64.sys`) | https://reqrypt.org/windivert.html | 2.2.2 | — | LGPL-3.0（双许可中所选分支） | 否 / No（见 §7） |
@@ -66,7 +67,7 @@ MCTier 不对 EasyTier 的版权主体作任何额外主张。
 
 LGPL-3.0 要求许可证文本随发行版一同提供，因此两端均**不依赖联网**即可读到全文：
 
-- **Windows 桌面端**：`src-tauri/tauri.conf.json` 的 `bundle.resources` 将 `LICENSE`、
+- **Windows / macOS 桌面端**：`src-tauri/tauri.conf.json` 的 `bundle.resources` 将 `LICENSE`、
   `THIRD_PARTY_NOTICES.md`、`licenses/*`（含 LGPL-3.0 与 GPL-3.0 全文）以及 Android 端的
   EasyTier 补丁一并打进安装包的 `licenses/` 目录；应用「关于」窗口另有第三方组件声明区块。
 - **Android 端**：`MCTier-Android/app/build.gradle.kts` 的 `syncLicenseAssets` 任务在构建时
@@ -78,7 +79,27 @@ LGPL-3.0 要求许可证文本随发行版一同提供，因此两端均**不依
 
 ---
 
-## 4. Windows 端 EasyTier 集成 / Windows Integration
+## 4. 桌面端 EasyTier 集成 / Desktop Integration
+
+### 4.1 macOS (Intel / Apple Silicon)
+
+macOS 与 Windows 一样，通过独立子进程运行 EasyTier，并不把 EasyTier 作为 Rust crate 或
+动态库链接进 MCTier。`scripts/fetch-macos-binaries.sh` 从 EasyTier 官方 v2.6.4 Release
+获取与目标架构匹配的压缩包，同时校验压缩包及实际使用文件的 SHA-256。
+
+| 架构 / 文件 | SHA-256 |
+| --- | --- |
+| aarch64 archive `easytier-macos-aarch64-v2.6.4.zip` | `4BE1882D1AA36D31C1D6BA0596F2CF8A097E371F8DA124212324B2E0F8DF7E4B` |
+| aarch64 `easytier-core` | `6478A522B8637E2BD2AD3ADAD66ED04A71B35F832BD9889BFFAF1863262F6DDF` |
+| aarch64 `easytier-cli` | `C700C4FEE1A7F35FCC1A048520D40CEA477B6CF7BF6D75F423FE1642C1EBC75D` |
+| x86_64 archive `easytier-macos-x86_64-v2.6.4.zip` | `89FC28A6E6995259D76CE3F11775220E8A21C760E94DF91A6A9DB30A69B6982E` |
+| x86_64 `easytier-core` | `DDF95A012599E424A632105FC3DC87D15C0A2DAAF30A20B71AA95C8F896F9A2F` |
+| x86_64 `easytier-cli` | `1E3353FAB30614BFB0277B05C8FF5F478394448E678E5A868AC09AF3EF9CCF8B` |
+
+以上文件均来自上游官方发布包，未经修改。Intel 与 Apple Silicon 安装包分别携带各自
+架构的 EasyTier 文件，不制作或混用通用二进制。
+
+### 4.2 Windows
 
 **集成方式：独立进程（未链接 EasyTier 库）**
 
@@ -90,23 +111,10 @@ LGPL-3.0 要求许可证文本随发行版一同提供，因此两端均**不依
 - MCTier 的 Rust 工程**没有**依赖 `easytier` crate：`src-tauri/Cargo.toml` 与
   `src-tauri/Cargo.lock` 中均不存在 `easytier` 依赖项，不存在静态链接、动态库调用或 FFI。
 
-**未修改性证明（SHA-256）**
-
-MCTier 发布包中分发的 EasyTier 二进制（构建时取自 `src-tauri/resources/binaries/`；
-该目录下的 `.exe` / `.dll` 按 `.gitignore` 规则不纳入 Git 版本库，构建时直接使用上游官方发布包原件）
-与上游官方发布包 `easytier-windows-x86_64-v2.5.0.zip`（tag `v2.5.0`）逐字节一致：
-
-| 文件 | SHA-256 |
-| --- | --- |
-| `easytier-core.exe` | `A47B63A7763FB4CCF9D56F3A7E936163619C89A1E34C9D1E84022375A7D2711F` |
-| `easytier-cli.exe` | `83A31B18CB92436BFD6D85C4A22B27594FB5A2EC7BB1E46ADF9245EBD935667B` |
-| `easytier-web.exe` | `4AFF79986A665F2919D32AE5BD928733A8C0555A474578D1E90AB96CE38F11EC` |
-| `easytier-web-embed.exe` | `3CE38602FD67499646CC8996D8B7A8A03E409C5F4B72623B09C97B97B75F850E` |
-
-`easytier-core.exe --version` 输出 `easytier-core 2.5.0-88a45d11`，与 tag `v2.5.0`
-的 commit `88a45d115670631dfe6a05ba192387d615ddb95b` 对应。
-
-任何人可通过以下方式独立复核：下载上述官方发布包，对同名文件计算 SHA-256 并比对。
+Windows 的 `easytier-core.exe` / `easytier-cli.exe` 从 EasyTier v2.5.0 源码重建，
+并应用本仓库的 `patches/pnet_datalink-0.35.0-no-npcap.patch`，因此不声称与上游
+预编译文件逐字节一致。构建脚本会校验源码 commit、应用补丁并检查最终 PE 导入表，
+确认不再静态依赖不可再分发的 `Packet.dll`；完整原因和复核步骤见 §8。
 
 ---
 
@@ -185,6 +193,8 @@ tag 为基线**的完整差异记录，其中同时包含「上游中间提交�
 1. **上游源码**：https://github.com/EasyTier/EasyTier
    - Windows 端：tag `v2.5.0`
      （https://github.com/EasyTier/EasyTier/releases/tag/v2.5.0）
+   - macOS 端：tag `v2.6.4`
+     （https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4）
    - Android 端基线：tag `v2.6.0`
      （https://github.com/EasyTier/EasyTier/releases/tag/v2.6.0）
 2. **MCTier 所作修改**：本仓库 `patches/easytier-2.6.0-mctier-android.patch`

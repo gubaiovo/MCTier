@@ -1408,7 +1408,15 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!())
+        .map(|app| {
+            app.run(|app, event| {
+                #[cfg(target_os = "macos")]
+                if let tauri::RunEvent::Reopen { .. } = event {
+                    restore_main_window(app);
+                }
+            });
+        });
     if let Err(e) = result {
         error!("运行错误: {}", e);
         panic!("error: {}", e);

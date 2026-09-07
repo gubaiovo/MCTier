@@ -142,6 +142,12 @@ class ScreenShareService {
       }
       console.log('🖥️ [ScreenShareService] 开始捕获屏幕...');
 
+      if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+        throw new Error(
+          '当前系统的 WebView 不支持屏幕捕获，请升级系统后重试；仍可接收其他玩家的共享画面。'
+        );
+      }
+
       // 捕获屏幕
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
         video: {

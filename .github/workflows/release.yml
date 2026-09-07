@@ -1,0 +1,590 @@
+name: Tag release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v<SemVer> tag to rebuild (empty uses the selected branch)
+        required: false
+        default: ''
+        type: string
+      publish:
+        description: Publish to the GitHub Release (requires an existing tag)
+        required: true
+        default: false
+        type: boolean
+
+# Every job only needs to read source and upload Actions artifacts. The release
+# job below narrows this to contents:write after all matrix artifacts pass the
+# final gate.
+permissions:
+  contents: read
+
+concurrency:
+  group: mctier-release-${{ github.event_name == 'workflow_dispatch' && (inputs.tag || github.ref) || github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  metadata:
+    name: Resolve and validate source
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      publish: ${{ steps.resolve.outputs.publish }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      channel: ${{ steps.resolve.outputs.channel }}
+      retention_days: ${{ steps.resolve.outputs.retention_days }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out the triggering revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve event policy
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_VALUE: ${{ github.ref }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -Eeuo pipefail
+
+          release_tag=''
+          checkout_ref="$GITHUB_SHA_VALUE"
+          publish=false
+          prerelease=false
+          retention_days=7
+
+          if [[ "$EVENT_NAME" == push && "$GITHUB_REF_VALUE" == refs/tags/* ]]; then
+            release_tag="$GITHUB_REF_NAME_VALUE"
+            checkout_ref="$GITHUB_REF_VALUE"
+            publish=true
+            retention_days=30
+          elif [[ "$EVENT_NAME" == workflow_dispatch && -n "${INPUT_TAG:-}" ]]; then
+            release_tag="$INPUT_TAG"
+            if [[ "${INPUT_PUBLISH:-false}" == true ]]; then
+              publish=true
+            fi
+            retention_days=30
+
+            # Resolve and pin a manually selected existing tag before any
+            # platform job starts. An arbitrary branch can never be published
+            # by setting publish=true without an explicit tag.
+            git ls-remote --exit-code --refs origin "refs/tags/$release_tag" >/dev/null \
+              || { echo "tag does not exist on this repository: $release_tag" >&2; exit 1; }
+            git fetch --force --no-tags origin \
+              "refs/tags/$release_tag:refs/tags/$release_tag"
+            checkout_ref="refs/tags/$release_tag"
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            if [[ "${INPUT_PUBLISH:-false}" == true ]]; then
+              echo 'publish=true requires an existing v<SemVer> tag input.' >&2
+              exit 1
+            fi
+            publish=false
+            retention_days=7
+          fi
+
+          # A hyphen in build metadata (v1.2.3+build-x) is not a
+          # prerelease marker. Only the part before `+` participates here.
+          tag_without_build="${release_tag%%+*}"
+          if [[ -n "$release_tag" && "$tag_without_build" == *-* ]]; then
+            prerelease=true
+          fi
+
+          if [[ -n "$release_tag" ]]; then
+            channel="$release_tag"
+          else
+            channel="manual-${GITHUB_SHA_VALUE:0:12}"
+          fi
+
+          {
+            echo "checkout_ref=$checkout_ref"
+            echo "tag=$release_tag"
+            echo "publish=$publish"
+            echo "prerelease=$prerelease"
+            echo "channel=$channel"
+            echo "retention_days=$retention_days"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Check out the resolved source revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.resolve.outputs.checkout_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Pin the exact source commit
+        id: source
+        run: |
+          set -Eeuo pipefail
+          sha="$(git rev-parse HEAD)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "not a commit SHA: $sha" >&2; exit 1; }
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          echo "Release source is pinned to $sha"
+
+      - name: Validate tag and embedded versions
+        id: version
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "$RELEASE_TAG" ]]; then
+            ./scripts/validate-release-version.sh "$RELEASE_TAG"
+            version="${RELEASE_TAG#v}"
+          else
+            version="$(node --input-type=module -e \
+              "import fs from 'node:fs'; console.log(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")"
+          fi
+          [[ "$version" != *'/'* && "$version" != *' '* ]] || {
+            echo "unsafe version value: $version" >&2
+            exit 1
+          }
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+  frontend:
+    name: Frontend build and tests
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Lint (visible, non-blocking legacy findings)
+        continue-on-error: true
+        run: npm run lint
+
+  desktop:
+    name: Desktop package (${{ matrix.name }})
+    needs: [metadata, frontend]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x86_64
+            platform: windows
+            arch: x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macOS x86_64
+            platform: macos
+            arch: x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: macOS arm64
+            platform: macos
+            arch: arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+          key: release-${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Fetch pinned Windows runtime files
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: .\scripts\fetch-binaries.ps1
+
+      - name: Build Npcap-free Windows EasyTier runtime
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: .\scripts\build-easytier-npcap-free.ps1
+
+      - name: Reject placeholder or Npcap Windows runtime files
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $directory = 'src-tauri/resources/binaries'
+          foreach ($name in 'easytier-core.exe', 'easytier-cli.exe') {
+            $path = Join-Path $directory $name
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing release runtime: $path" }
+            $bytes = [IO.File]::ReadAllBytes($path)
+            if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+              throw "Release runtime is not a PE executable: $path"
+            }
+            if ([Text.Encoding]::ASCII.GetString($bytes) -match 'MCTIER-CI-PLACEHOLDER') {
+              throw "Compile-only placeholder reached packaging: $path"
+            }
+          }
+          foreach ($name in 'Packet.dll', 'Packet.lib') {
+            if (Test-Path -LiteralPath (Join-Path $directory $name)) {
+              throw "Npcap file must not be bundled: $name"
+            }
+          }
+
+      - name: Fetch pinned macOS EasyTier runtime files
+        if: matrix.platform == 'macos'
+        env:
+          MACOS_ARCH: ${{ matrix.arch }}
+        run: |
+          set -Eeuo pipefail
+          test -f scripts/fetch-macos-binaries.sh || {
+            echo 'scripts/fetch-macos-binaries.sh is required for a macOS release.' >&2
+            exit 1
+          }
+          bash scripts/fetch-macos-binaries.sh "$MACOS_ARCH"
+
+      - name: Native macOS check and tests
+        if: matrix.platform == 'macos'
+        working-directory: src-tauri
+        run: |
+          set -Eeuo pipefail
+          cargo check --all-targets --locked
+          cargo test --lib --locked
+
+      - name: Build Windows NSIS installer
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+        run: npm run tauri build -- --target $env:TAURI_TARGET --bundles nsis --ci
+
+      - name: Verify and stage Windows installer
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          CHANNEL: ${{ needs.metadata.outputs.channel }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer, found $($installers.Count)." }
+          & 7z t $installers[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw '7-Zip could not test the NSIS installer.' }
+          $listing = (& 7z l $installers[0].FullName) -join "`n"
+          if ($listing -notmatch 'MCTier\.exe') { throw 'NSIS installer does not contain MCTier.exe.' }
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item -LiteralPath $installers[0].FullName `
+            -Destination "staging/MCTier-$env:RELEASE_VERSION-windows-x86_64-unsigned.exe"
+
+      - name: Build ad-hoc macOS application
+        if: matrix.platform == 'macos'
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+        run: |
+          set -Eeuo pipefail
+          test -f src-tauri/tauri.macos.conf.json || {
+            echo 'src-tauri/tauri.macos.conf.json is required for macOS packaging.' >&2
+            exit 1
+          }
+          # No Developer ID secret is required for an Actions diagnostic or
+          # fork release. Tauri signs the app ad-hoc; optional notarization is
+          # documented separately.
+          export APPLE_SIGNING_IDENTITY=-
+          npm run tauri build -- \
+            --config src-tauri/tauri.macos.conf.json \
+            --target "$TAURI_TARGET" --bundles app --ci
+
+      - name: Create macOS DMG from the ad-hoc application
+        if: matrix.platform == 'macos'
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+          MACOS_ARCH: ${{ matrix.arch }}
+        run: |
+          set -Eeuo pipefail
+          bundle_root="src-tauri/target/$TAURI_TARGET/release/bundle"
+          app="$(find "$bundle_root/macos" -maxdepth 1 -name '*.app' -type d -print -quit)"
+          test -n "$app"
+          payload="$(mktemp -d "$RUNNER_TEMP/mctier-dmg.XXXXXX")"
+          cleanup() { rm -rf -- "$payload"; }
+          trap cleanup EXIT
+          cp -R "$app" "$payload/"
+          ln -s /Applications "$payload/Applications"
+          mkdir -p "$bundle_root/dmg"
+          hdiutil create -volname MCTier -srcfolder "$payload" -ov -format UDZO \
+            "$bundle_root/dmg/MCTier-$MACOS_ARCH.dmg"
+
+      - name: Verify macOS bundle and sidecars
+        if: matrix.platform == 'macos'
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+          REQUIRE_NOTARIZATION: 'false'
+        run: bash scripts/check-macos-bundle.sh "$TAURI_TARGET"
+
+      - name: Stage macOS artifact
+        if: matrix.platform == 'macos'
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          MACOS_ARCH: ${{ matrix.arch }}
+          TAURI_TARGET: ${{ matrix.target }}
+        run: |
+          set -Eeuo pipefail
+          ./scripts/package-release-artifacts.sh macos "$MACOS_ARCH" "$RELEASE_VERSION" \
+            "src-tauri/target/$TAURI_TARGET/release/bundle/dmg" staging
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-${{ needs.metadata.outputs.channel }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: staging/*
+          if-no-files-found: error
+          retention-days: ${{ needs.metadata.outputs.retention_days }}
+
+  linux:
+    name: Linux package (x86_64)
+    needs: [metadata, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+          key: release-linux-x86_64
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf libssl-dev pkg-config libcap2-bin unzip
+
+      - name: Fetch pinned Linux EasyTier runtime files
+        run: ./MCTier-Linux/scripts/fetch-binaries.sh
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Linux AppImage and Debian package
+        run: npm run tauri build -- --bundles deb,appimage --ci
+
+      - name: Verify and stage Linux artifacts
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          ./scripts/package-release-artifacts.sh linux x86_64 "$RELEASE_VERSION" \
+            src-tauri/target/release/bundle staging
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-${{ needs.metadata.outputs.channel }}-linux-x86_64
+          path: staging/*
+          if-no-files-found: error
+          retention-days: ${{ needs.metadata.outputs.retention_days }}
+
+  android:
+    name: Android package (arm64 debug-signed)
+    needs: [metadata, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      - name: Build debug-signed arm64 APK
+        working-directory: MCTier-Android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify and stage Android APK
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          apk="MCTier-Android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          "$build_tools/aapt" dump badging "$apk" | grep -q "package: name='top.pmh13.mctier'"
+          unzip -l "$apk" | grep -q 'lib/arm64-v8a/libeasytier_android_jni.so'
+          unzip -l "$apk" | grep -q 'assets/THIRD_PARTY_NOTICES.md'
+          ./scripts/package-release-artifacts.sh android arm64 "$RELEASE_VERSION" \
+            MCTier-Android/app/build/outputs/apk/debug staging
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-${{ needs.metadata.outputs.channel }}-android-arm64
+          path: staging/*
+          if-no-files-found: error
+          retention-days: ${{ needs.metadata.outputs.retention_days }}
+
+  release:
+    name: Publish GitHub Release
+    if: needs.metadata.outputs.publish == 'true'
+    needs: [metadata, frontend, desktop, linux, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Download all matrix artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: release-${{ needs.metadata.outputs.channel }}-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Require the complete release artifact set
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: ./scripts/collect-release-artifacts.sh "$RELEASE_VERSION" release-assets
+
+      - name: Generate SHA256SUMS
+        working-directory: release-assets
+        run: |
+          set -Eeuo pipefail
+          checksums="$RUNNER_TEMP/mctier-release-SHA256SUMS"
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
+            | LC_ALL=C sort \
+            | xargs -r sha256sum > "$checksums"
+          test -s "$checksums"
+          mv -- "$checksums" SHA256SUMS
+
+      - name: Create or update the verified Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+          SOURCE_SHA: ${{ needs.metadata.outputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$RELEASE_TAG" ]] || {
+            echo 'Release publication requires a tag.' >&2
+            exit 1
+          }
+
+          cat > release-notes.md <<EOF
+          MCTier $RELEASE_TAG
+
+          Source commit: $SOURCE_SHA
+
+          Installation and trust notes:
+          - Windows NSIS is unsigned; SmartScreen may warn.
+          - macOS DMG contains an ad-hoc signed app and is not notarized; Gatekeeper may require an explicit user override.
+          - Android APK is debug-signed and intended for sideload/testing, not Play Store publication.
+          - Linux packages are not publisher-signed. Verify SHA256SUMS before installing.
+
+          The complete cross-platform asset set was checked by the release artifact gate before publication.
+          EOF
+
+          latest_flag=(--latest)
+          if [[ "$PRERELEASE" == true ]]; then
+            latest_flag=(--latest=false)
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            draft="$(gh release view "$RELEASE_TAG" --json isDraft -q '.isDraft')"
+            if [[ "$draft" != true ]]; then
+              echo "Refusing to overwrite an existing public Release: $RELEASE_TAG" >&2
+              echo 'Delete/rename the old Release or create a draft before retrying.' >&2
+              exit 1
+            fi
+            echo "Continuing an existing draft Release: $RELEASE_TAG"
+          else
+            release_flags=(
+              --verify-tag
+              --title "MCTier $RELEASE_TAG"
+              --notes-file release-notes.md
+              --draft
+            )
+            if [[ "$PRERELEASE" == true ]]; then
+              release_flags+=(--prerelease)
+            else
+              release_flags+=(--latest=false)
+            fi
+            gh release create "$RELEASE_TAG" "${release_flags[@]}"
+          fi
+
+          # The release remains a draft while every asset is uploaded. An
+          # interrupted upload therefore cannot expose a partial public
+          # release. Existing public releases are rejected above rather than
+          # being mutated by a retry.
+          while IFS= read -r -d '' asset; do
+            gh release upload "$RELEASE_TAG" "$asset" --clobber
+          done < <(find release-assets -maxdepth 1 -type f -print0)
+
+          gh release edit "$RELEASE_TAG" \
+            --verify-tag \
+            --title "MCTier $RELEASE_TAG" \
+            --notes-file release-notes.md \
+            --prerelease="$PRERELEASE" \
+            --draft=false \
+            "${latest_flag[@]}"
+
+          {
+            echo "Published $RELEASE_TAG from $SOURCE_SHA."
+            echo "Stable channel: $([[ "$PRERELEASE" == true ]] && echo no || echo yes)"
+          } >>"$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>MCTier 需要使用麦克风与大厅中的玩家进行语音通话。</string>
+  <key>NSCameraUsageDescription</key>
+  <string>MCTier 需要在你开启视频通信时使用摄像头。</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>MCTier 需要访问本地网络以发现 Minecraft 世界、组建虚拟局域网并传输语音与文件。</string>
+  <!--
+    Private signaling endpoints are user-provided at runtime and cannot be
+    enumerated at build time. Limit the ATS relaxation to WKWebView content;
+    the application CSP still restricts cleartext external access to ws://
+    signaling and the fixed EasyTier overlay service ports.
+  -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoadsInWebContent</key>
+    <true/>
+  </dict>
+</dict>
+</plist>
