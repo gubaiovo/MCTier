@@ -46,7 +46,9 @@ class VoiceChangerService {
     try {
       const saved = localStorage.getItem(LS_KEY) as VoicePreset | null;
       if (saved) this.preset = saved;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   getPreset(): VoicePreset {
@@ -62,8 +64,11 @@ class VoiceChangerService {
   setPreset(preset: VoicePreset): void {
     const previous = this.preset;
     this.preset = preset;
-    try { localStorage.setItem(LS_KEY, preset); } catch { /* ignore */ }
-
+    try {
+      localStorage.setItem(LS_KEY, preset);
+    } catch {
+      /* ignore */
+    }
     // 跨越「原声（不接图）↔ 变声（接图）」边界时，输出轨道必然要换一条，
     // 只改引擎内部的图是不够的——原声态下引擎根本没有图。
     if (this.rawStream && requiresOutputRebuild(previous, preset)) {
@@ -118,13 +123,19 @@ class VoiceChangerService {
       processed = this.auditionEngine.attach(raw, this.preset);
     }
 
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new AC();
     this.auditionCtx = ctx;
     const src = ctx.createMediaStreamSource(processed);
     // 实时回放（不加延迟，避免输出被麦克风再次采集形成叠加回声）
     src.connect(ctx.destination);
-    try { await ctx.resume(); } catch { /* ignore */ }
+    try {
+      await ctx.resume();
+    } catch {
+      /* ignore */
+    }
     this.auditioning = true;
   }
 
@@ -143,7 +154,11 @@ class VoiceChangerService {
       this.auditionEngine = null;
     }
     if (this.auditionCtx) {
-      try { await this.auditionCtx.close(); } catch { /* ignore */ }
+      try {
+        await this.auditionCtx.close();
+      } catch {
+        /* ignore */
+      }
       this.auditionCtx = null;
     }
   }

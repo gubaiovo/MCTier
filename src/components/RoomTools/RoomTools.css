@@ -76,7 +76,9 @@
   border-radius: 6px;
   color: rgba(255, 120, 117, 0.8);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .room-todo-del:hover {

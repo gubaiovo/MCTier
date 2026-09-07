@@ -15,6 +15,7 @@ import { useEscapeKey } from '../../hooks';
 import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
 import { DOWNLOAD_WEBSITE } from '../../services/version/versionPolicy';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './MainWindow.css';
 
 const { Title, Paragraph } = Typography;
@@ -32,7 +33,7 @@ export const MainWindow: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [enableGpuRendering, setEnableGpuRendering] = useState(true);
   const [appVersion, setAppVersion] = useState('');
-  
+
   const versionError = useAppStore((state) => state.versionError);
   const setVersionError = useAppStore((state) => state.setVersionError);
 
@@ -50,9 +51,11 @@ export const MainWindow: React.FC = () => {
   };
 
   useEffect(() => {
-    void getVersion().then(setAppVersion).catch((error) => {
-      console.warn('读取应用版本失败:', error);
-    });
+    void getVersion()
+      .then(setAppVersion)
+      .catch((error) => {
+        console.warn('读取应用版本失败:', error);
+      });
   }, []);
 
   // 监听 GPU 渲染设置变化的全局事件
@@ -90,15 +93,18 @@ export const MainWindow: React.FC = () => {
   }, []);
 
   // ESC键返回 - 在表单或关于页面时返回主界面
-  useEscapeKey(() => {
-    if (showForm) {
-      handleCloseForm();
-    } else if (showAbout) {
-      handleCloseAbout();
-    } else if (showSettings) {
-      handleCloseSettings();
-    }
-  }, showForm || showAbout || showSettings);
+  useEscapeKey(
+    () => {
+      if (showForm) {
+        handleCloseForm();
+      } else if (showAbout) {
+        handleCloseAbout();
+      } else if (showSettings) {
+        handleCloseSettings();
+      }
+    },
+    showForm || showAbout || showSettings
+  );
 
   // 组件加载时主动拉取自动大厅配置，仅应用启动后首次触发一次
   useEffect(() => {
@@ -107,13 +113,18 @@ export const MainWindow: React.FC = () => {
     const checkAutoLobby = async () => {
       try {
         const settings = await invoke<any>('get_settings');
-        
+
         // 加载 GPU 渲染设置
         const gpuEnabled = settings.enableGpuRendering ?? true;
         setEnableGpuRendering(gpuEnabled);
         console.log('GPU 渲染设置:', gpuEnabled);
-        
-        if (settings.autoLobbyEnabled && settings.lobbyName && settings.lobbyPassword && settings.playerName) {
+
+        if (
+          settings.autoLobbyEnabled &&
+          settings.lobbyName &&
+          settings.lobbyPassword &&
+          settings.playerName
+        ) {
           console.log('检测到自动大厅配置，自动创建大厅:', settings.lobbyName);
           (window as any).__autoLobbyTriggered = true;
           setFormMode('create');
@@ -141,13 +152,16 @@ export const MainWindow: React.FC = () => {
   useEffect(() => {
     if (versionError) {
       console.log('MainWindow检测到版本错误，显示弹窗');
-      
+
       Modal.warning({
         title: tl('版本过低', 'Version Too Low'),
         content: (
           <div style={{ lineHeight: '1.8' }}>
             <p style={{ marginBottom: '12px' }}>
-              {tl('您的 MCTier 版本过低，无法连接到大厅。', 'Your MCTier version is too low to connect to the lobby.')}
+              {tl(
+                '您的 MCTier 版本过低，无法连接到大厅。',
+                'Your MCTier version is too low to connect to the lobby.'
+              )}
             </p>
             <p style={{ marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>
               {tl('当前版本', 'Current version')}: {versionError.currentVersion}
@@ -156,7 +170,10 @@ export const MainWindow: React.FC = () => {
               {tl('最低要求', 'Minimum required')}: {versionError.minimumVersion}
             </p>
             <p style={{ color: 'rgba(255,255,255,0.6)' }}>
-              {tl('请前往官网下载最新版本', 'Please download the latest version from the official website')}
+              {tl(
+                '请前往官网下载最新版本',
+                'Please download the latest version from the official website'
+              )}
             </p>
           </div>
         ),
@@ -210,33 +227,37 @@ export const MainWindow: React.FC = () => {
   };
 
   if (showAbout) {
-    return (
-      <AboutWindow onClose={handleCloseAbout} />
-    );
+    return <AboutWindow onClose={handleCloseAbout} />;
   }
 
   if (showForm) {
-    return (
-      <LobbyForm mode={formMode} onClose={handleCloseForm} />
-    );
+    return <LobbyForm mode={formMode} onClose={handleCloseForm} />;
   }
 
   return (
     <div className={`main-window ${!enableGpuRendering ? 'gpu-rendering-disabled' : ''}`}>
       {/* 拖拽区域 - 只在顶部 */}
-      <div className="main-window-drag-area" data-tauri-drag-region>
+      <div className="main-window-drag-area" data-tauri-drag-region onMouseDown={startWindowDrag}>
         <div className="main-window-controls">
-          <button className="main-window-control-btn" onClick={handleMinimizeToTray} title={tl('最小化到系统托盘', 'Minimize to system tray')}>
+          <button
+            className="main-window-control-btn"
+            onClick={handleMinimizeToTray}
+            title={tl('最小化到系统托盘', 'Minimize to system tray')}
+          >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
             </svg>
           </button>
-          <button className="main-window-control-btn main-window-close-btn" onClick={handleCloseMainWindow} title={tl('关闭 MCTier', 'Close MCTier')}>
+          <button
+            className="main-window-control-btn main-window-close-btn"
+            onClick={handleCloseMainWindow}
+            title={tl('关闭 MCTier', 'Close MCTier')}
+          >
             <CloseIcon size={16} />
           </button>
         </div>
       </div>
-      
+
       <motion.div
         className="main-window-content"
         initial={{ opacity: 0, y: 30 }}

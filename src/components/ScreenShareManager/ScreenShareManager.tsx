@@ -28,14 +28,17 @@ export const ScreenShareManager: React.FC = () => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [selectedShare, setSelectedShare] = useState<ScreenShare | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [originalWindowSize, setOriginalWindowSize] = useState<{ width: number; height: number } | null>(null);
+  const [originalWindowSize, setOriginalWindowSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [pendingStream, setPendingStream] = useState<MediaStream | null>(null);
 
   // 组件挂载时检查是否有活跃的共享
   useEffect(() => {
     const checkActiveShare = () => {
       const shares = screenShareService.getActiveShares();
-      const myShare = shares.find(share => share.playerId === currentPlayerId);
+      const myShare = shares.find((share) => share.playerId === currentPlayerId);
       if (myShare) {
         console.log('🔍 [ScreenShareManager] 检测到活跃的共享:', myShare.id);
         setMyShareId(myShare.id);
@@ -63,15 +66,17 @@ export const ScreenShareManager: React.FC = () => {
   // 【关键修复】监听viewingShareId和pendingStream变化，自动播放视频
   useEffect(() => {
     if (viewingShareId && pendingStream && videoRef.current) {
-      console.log('📺 [ScreenShareManager] useEffect: 检测到viewingShareId和pendingStream，开始播放视频');
+      console.log(
+        '📺 [ScreenShareManager] useEffect: 检测到viewingShareId和pendingStream，开始播放视频'
+      );
       console.log('📺 [ScreenShareManager] viewingShareId:', viewingShareId);
       console.log('📺 [ScreenShareManager] 流信息:', {
         id: pendingStream.id,
         active: pendingStream.active,
         videoTracks: pendingStream.getVideoTracks().length,
-        audioTracks: pendingStream.getAudioTracks().length
+        audioTracks: pendingStream.getAudioTracks().length,
       });
-      
+
       const playVideo = async () => {
         try {
           if (!videoRef.current) {
@@ -81,28 +86,28 @@ export const ScreenShareManager: React.FC = () => {
 
           console.log('📺 [ScreenShareManager] 设置视频流到video元素');
           videoRef.current.srcObject = pendingStream;
-          
+
           // 添加事件监听
           videoRef.current.onloadedmetadata = () => {
             console.log('📺 [ScreenShareManager] 视频元数据已加载');
             console.log('📺 [ScreenShareManager] 视频尺寸:', {
               videoWidth: videoRef.current?.videoWidth,
-              videoHeight: videoRef.current?.videoHeight
+              videoHeight: videoRef.current?.videoHeight,
             });
           };
-          
+
           videoRef.current.onplay = () => {
             console.log('✅ [ScreenShareManager] 视频开始播放');
           };
-          
+
           videoRef.current.onerror = (e) => {
             console.error('❌ [ScreenShareManager] 视频错误:', e);
           };
-          
+
           console.log('📺 [ScreenShareManager] 调用video.play()...');
           await videoRef.current.play();
           console.log('✅ [ScreenShareManager] 视频播放成功');
-          
+
           // 清空pendingStream，避免重复播放
           setPendingStream(null);
         } catch (playError: any) {
@@ -123,7 +128,7 @@ export const ScreenShareManager: React.FC = () => {
   // 【修复】监听共享列表变化，如果正在查看的共享被移除，自动退出查看界面
   useEffect(() => {
     if (viewingShareId) {
-      const share = activeShares.find(s => s.id === viewingShareId);
+      const share = activeShares.find((s) => s.id === viewingShareId);
       if (!share) {
         console.log('⚠️ [ScreenShareManager] 正在查看的共享已停止，自动退出查看界面');
         message.info(tl('共享者已停止屏幕共享', 'The sharer stopped screen sharing'));
@@ -165,7 +170,7 @@ export const ScreenShareManager: React.FC = () => {
       console.log('✅ 屏幕共享已启动:', shareId);
     } catch (error: any) {
       console.error('❌ 启动屏幕共享失败:', error);
-      
+
       if (error.name === 'NotAllowedError') {
         message.error(tl('用户拒绝了屏幕共享权限', 'Screen share permission denied'));
       } else if (error.name === 'NotFoundError') {
@@ -204,7 +209,7 @@ export const ScreenShareManager: React.FC = () => {
       console.log('👀 [ScreenShareManager] 共享信息:', {
         requirePassword: share.requirePassword,
         hasPassword: !!share.password,
-        password: share.password ? '***' : undefined
+        password: share.password ? '***' : undefined,
       });
 
       // 【修复】先保存当前窗口大小，再请求查看屏幕
@@ -212,8 +217,11 @@ export const ScreenShareManager: React.FC = () => {
         const appWindow = getCurrentWindow();
         const currentSize = await appWindow.innerSize();
         setOriginalWindowSize({ width: currentSize.width, height: currentSize.height });
-        console.log('💾 [ScreenShareManager] 已保存原始窗口大小:', { width: currentSize.width, height: currentSize.height });
-        
+        console.log('💾 [ScreenShareManager] 已保存原始窗口大小:', {
+          width: currentSize.width,
+          height: currentSize.height,
+        });
+
         // 放大窗口到适合观看屏幕共享的尺寸
         await appWindow.setSize(new PhysicalSize(1280, 800));
         await appWindow.setResizable(true);
@@ -222,30 +230,38 @@ export const ScreenShareManager: React.FC = () => {
         console.error('❌ [ScreenShareManager] 调整窗口大小失败:', error);
       }
 
-      const stream = share.playerId === currentPlayerId
-        ? screenShareService.getLocalStream(share.id)
-        : await screenShareService.requestViewScreen(share.id);
-      if (!stream) throw new Error(tl('本地屏幕采集尚未就绪，请稍后重试', 'Local screen capture is not ready yet'));
-      
+      const stream =
+        share.playerId === currentPlayerId
+          ? screenShareService.getLocalStream(share.id)
+          : await screenShareService.requestViewScreen(share.id);
+      if (!stream)
+        throw new Error(
+          tl('本地屏幕采集尚未就绪，请稍后重试', 'Local screen capture is not ready yet')
+        );
+
       console.log('✅ [ScreenShareManager] 已获取屏幕流');
       console.log('📺 [ScreenShareManager] 流信息:', {
         id: stream.id,
         active: stream.active,
-        tracks: stream.getTracks().map(t => ({
+        tracks: stream.getTracks().map((t) => ({
           kind: t.kind,
           enabled: t.enabled,
           readyState: t.readyState,
-          label: t.label
-        }))
+          label: t.label,
+        })),
       });
-      
+
       // 【关键修复】先设置pendingStream，再设置viewingShareId
       // 这样useEffect会在video元素渲染后自动播放
       setPendingStream(stream);
       setViewingShareId(share.id);
-      
-      message.success(tl(`正在查看 ${share.playerName} 的屏幕`, `Viewing ${share.playerName}'s screen`));
-      console.log('✅ [ScreenShareManager] 已设置viewingShareId和pendingStream，等待useEffect播放视频');
+
+      message.success(
+        tl(`正在查看 ${share.playerName} 的屏幕`, `Viewing ${share.playerName}'s screen`)
+      );
+      console.log(
+        '✅ [ScreenShareManager] 已设置viewingShareId和pendingStream，等待useEffect播放视频'
+      );
     } catch (error) {
       console.error('❌ [ScreenShareManager] 查看屏幕失败:', error);
       message.error(tl('查看屏幕失败', 'Failed to view screen'));
@@ -272,30 +288,34 @@ export const ScreenShareManager: React.FC = () => {
         }, 30000);
       });
 
-      const stream = selectedShare.playerId === currentPlayerId
-        ? screenShareService.getLocalStream(selectedShare.id)
-        : await Promise.race([
-            screenShareService.requestViewScreen(selectedShare.id, passwordInput),
-            timeoutPromise,
-          ]);
-      if (!stream) throw new Error(tl('本地屏幕采集尚未就绪，请稍后重试', 'Local screen capture is not ready yet'));
-      
+      const stream =
+        selectedShare.playerId === currentPlayerId
+          ? screenShareService.getLocalStream(selectedShare.id)
+          : await Promise.race([
+              screenShareService.requestViewScreen(selectedShare.id, passwordInput),
+              timeoutPromise,
+            ]);
+      if (!stream)
+        throw new Error(
+          tl('本地屏幕采集尚未就绪，请稍后重试', 'Local screen capture is not ready yet')
+        );
+
       console.log('✅ [ScreenShareManager] 密码验证成功，已获取屏幕流');
       console.log('📺 [ScreenShareManager] 流信息:', {
         id: stream.id,
         active: stream.active,
-        tracks: stream.getTracks().map(t => ({
+        tracks: stream.getTracks().map((t) => ({
           kind: t.kind,
           enabled: t.enabled,
           readyState: t.readyState,
-          label: t.label
-        }))
+          label: t.label,
+        })),
       });
 
       // 密码验证成功后，关闭密码弹窗
       setShowPasswordModal(false);
       setPasswordInput('');
-      
+
       // 保存selectedShare的引用，因为后面会清空它
       const shareToView = selectedShare;
       setSelectedShare(null);
@@ -305,8 +325,11 @@ export const ScreenShareManager: React.FC = () => {
         const appWindow = getCurrentWindow();
         const currentSize = await appWindow.innerSize();
         setOriginalWindowSize({ width: currentSize.width, height: currentSize.height });
-        console.log('💾 [ScreenShareManager] 已保存原始窗口大小:', { width: currentSize.width, height: currentSize.height });
-        
+        console.log('💾 [ScreenShareManager] 已保存原始窗口大小:', {
+          width: currentSize.width,
+          height: currentSize.height,
+        });
+
         // 放大窗口到适合观看屏幕共享的尺寸
         await appWindow.setSize(new PhysicalSize(1280, 800));
         await appWindow.setResizable(true);
@@ -319,19 +342,26 @@ export const ScreenShareManager: React.FC = () => {
       // 这样useEffect会在video元素渲染后自动播放
       setPendingStream(stream);
       setViewingShareId(shareToView.id);
-      
-      message.success(tl(`正在查看 ${shareToView.playerName} 的屏幕`, `Viewing ${shareToView.playerName}'s screen`));
-      console.log('✅ [ScreenShareManager] 已设置viewingShareId和pendingStream，等待useEffect播放视频');
+
+      message.success(
+        tl(
+          `正在查看 ${shareToView.playerName} 的屏幕`,
+          `Viewing ${shareToView.playerName}'s screen`
+        )
+      );
+      console.log(
+        '✅ [ScreenShareManager] 已设置viewingShareId和pendingStream，等待useEffect播放视频'
+      );
     } catch (error: any) {
       console.error('❌ [ScreenShareManager] 查看屏幕失败:', error);
-      
+
       // 【修复】显示具体的错误信息
       const errorMessage = error?.message || '查看屏幕失败';
       message.error(errorMessage);
-      
+
       // 密码错误或其他错误，保持在密码输入界面
       console.log('⚠️ [ScreenShareManager] 保持在密码输入界面，等待用户重新输入');
-      
+
       // 【重要】不要关闭密码输入框，让用户可以重新输入
       // setShowPasswordModal(false);
       // setPasswordInput('');
@@ -344,20 +374,22 @@ export const ScreenShareManager: React.FC = () => {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    
+
     // 清理PeerConnection和远程流
     if (viewingShareId) {
       screenShareService.stopViewingScreen(viewingShareId);
     }
-    
+
     setViewingShareId(null);
     setPendingStream(null);
-    
+
     // 恢复原窗口大小，但保持允许调整大小
     if (originalWindowSize) {
       try {
         const appWindow = getCurrentWindow();
-        await appWindow.setSize(new PhysicalSize(originalWindowSize.width, originalWindowSize.height));
+        await appWindow.setSize(
+          new PhysicalSize(originalWindowSize.width, originalWindowSize.height)
+        );
         // 【修复】保持窗口可调整大小，不要禁止
         await appWindow.setResizable(true);
         console.log('✅ [ScreenShareManager] 窗口已恢复原大小，保持可调整');
@@ -366,7 +398,7 @@ export const ScreenShareManager: React.FC = () => {
       }
       setOriginalWindowSize(null);
     }
-    
+
     message.info(tl('已停止查看屏幕', 'Stopped viewing screen'));
   };
 
@@ -384,19 +416,26 @@ export const ScreenShareManager: React.FC = () => {
           >
             <div className="viewer-controls-bar">
               <div className="viewer-info-text">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
                   <line x1="8" y1="21" x2="16" y2="21" />
                   <line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
                 <span>
                   {tl(
-                    `${activeShares.find(s => s.id === viewingShareId)?.playerName || '未知玩家'} 的屏幕`,
-                    `${activeShares.find(s => s.id === viewingShareId)?.playerName || 'Unknown Player'}'s screen`,
+                    `${activeShares.find((s) => s.id === viewingShareId)?.playerName || '未知玩家'} 的屏幕`,
+                    `${activeShares.find((s) => s.id === viewingShareId)?.playerName || 'Unknown Player'}'s screen`
                   )}
                 </span>
               </div>
-              
+
               <motion.button
                 className="stop-viewing-btn"
                 onClick={handleStopViewing}
@@ -404,19 +443,21 @@ export const ScreenShareManager: React.FC = () => {
                 whileTap={{ scale: 0.95 }}
                 title={tl('停止查看', 'Stop watching')}
               >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </motion.button>
             </div>
-            
-            <video
-              ref={videoRef}
-              className="fullscreen-video"
-              autoPlay
-              playsInline
-            />
+
+            <video ref={videoRef} className="fullscreen-video" autoPlay playsInline />
           </motion.div>
         )}
       </AnimatePresence>
@@ -426,14 +467,18 @@ export const ScreenShareManager: React.FC = () => {
         {/* 提示信息 */}
         <div className="screen-share-hint">
           <InfoIcon size={14} />
-          <span>{tl('同一个屏幕支持多人同时查看', 'The same screen can be viewed by multiple players')}</span>
+          <span>
+            {tl('同一个屏幕支持多人同时查看', 'The same screen can be viewed by multiple players')}
+          </span>
         </div>
-        
+
         {activeShares.length === 0 ? (
           <div className="empty-state">
             <ScreenShareIcon size={48} />
             <p>{tl('当前没有玩家共享屏幕', 'No one is sharing their screen')}</p>
-            <p className="empty-hint">{tl('点击"开始共享"按钮分享你的屏幕', 'Click Start Sharing to share your screen')}</p>
+            <p className="empty-hint">
+              {tl('点击"开始共享"按钮分享你的屏幕', 'Click Start Sharing to share your screen')}
+            </p>
           </div>
         ) : (
           <AnimatePresence mode="popLayout">
@@ -460,11 +505,15 @@ export const ScreenShareManager: React.FC = () => {
                         {isMyShare && ` (${tl('我', 'Me')})`}
                       </span>
                       <span className="share-start-time">
-                        {tl('创建时间', 'Created')}: {new Date(share.startTime).toLocaleTimeString()}
+                        {tl('创建时间', 'Created')}:{' '}
+                        {new Date(share.startTime).toLocaleTimeString()}
                       </span>
                       <span className={`viewer-info ${isBeingViewed ? 'active' : 'waiting'}`}>
                         {isBeingViewed
-                          ? tl(`正在被 ${viewerCount} 人查看`, `${viewerCount} viewer${viewerCount === 1 ? '' : 's'} watching`)
+                          ? tl(
+                              `正在被 ${viewerCount} 人查看`,
+                              `${viewerCount} viewer${viewerCount === 1 ? '' : 's'} watching`
+                            )
                           : tl('等待玩家查看', 'Waiting for a viewer')}
                       </span>
                     </div>
@@ -473,7 +522,14 @@ export const ScreenShareManager: React.FC = () => {
                       {share.requirePassword && (
                         <Tooltip title={tl('需要密码', 'Password required')} placement="top">
                           <div className="password-badge">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
                               <rect x="5" y="11" width="14" height="10" rx="2" ry="2" />
                               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
@@ -483,7 +539,14 @@ export const ScreenShareManager: React.FC = () => {
                       {isBeingViewed && (
                         <Tooltip title={tl('正在被查看', 'Being viewed')} placement="top">
                           <div className="viewing-badge">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
                               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                               <circle cx="12" cy="12" r="3" />
                             </svg>
@@ -503,13 +566,20 @@ export const ScreenShareManager: React.FC = () => {
                     {isViewing ? (
                       <>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
                         </svg>
                         <span>{tl('查看中', 'Viewing')}</span>
                       </>
                     ) : (
                       <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                           <circle cx="12" cy="12" r="3" />
                         </svg>
@@ -543,7 +613,14 @@ export const ScreenShareManager: React.FC = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <rect x="6" y="6" width="12" height="12" />
             </svg>
             <span>{tl('停止共享', 'Stop Sharing')}</span>
@@ -568,10 +645,7 @@ export const ScreenShareManager: React.FC = () => {
         <div className="start-share-modal-content">
           <div className="modal-option">
             <span>{tl('需要密码才能查看', 'Require a password to view')}</span>
-            <Switch
-              checked={requirePassword}
-              onChange={setRequirePassword}
-            />
+            <Switch checked={requirePassword} onChange={setRequirePassword} />
           </div>
 
           {requirePassword && (
@@ -592,7 +666,12 @@ export const ScreenShareManager: React.FC = () => {
 
           <div className="modal-hint">
             <InfoIcon size={16} />
-            <span>{tl('其他玩家将能够实时查看你的屏幕', 'Other players will be able to view your screen in real time')}</span>
+            <span>
+              {tl(
+                '其他玩家将能够实时查看你的屏幕',
+                'Other players will be able to view your screen in real time'
+              )}
+            </span>
           </div>
         </div>
       </Modal>
@@ -625,4 +704,3 @@ export const ScreenShareManager: React.FC = () => {
     </div>
   );
 };
-

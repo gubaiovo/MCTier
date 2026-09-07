@@ -10,11 +10,16 @@ import { useAppStore } from './appStore';
  */
 export const printStoreState = (): void => {
   const state = useAppStore.getState();
-  const safeLobby = state.lobby ? { ...state.lobby, password: state.lobby.password ? '[redacted]' : undefined } : null;
+  const safeLobby = state.lobby
+    ? { ...state.lobby, password: state.lobby.password ? '[redacted]' : undefined }
+    : null;
   const safeConfig = {
     ...state.config,
     autoLobby: state.config.autoLobby
-      ? { ...state.config.autoLobby, lobbyPassword: state.config.autoLobby.lobbyPassword ? '[redacted]' : undefined }
+      ? {
+          ...state.config.autoLobby,
+          lobbyPassword: state.config.autoLobby.lobbyPassword ? '[redacted]' : undefined,
+        }
       : state.config.autoLobby,
   };
   console.group('📊 MCTier Store 状态');
@@ -46,22 +51,16 @@ export const enableStoreLogging = (): (() => void) => {
       changes.push(`应用状态: ${previousState.appState} → ${state.appState}`);
     }
     if (state.lobby !== previousState.lobby) {
-      changes.push(
-        `大厅: ${previousState.lobby?.name ?? '无'} → ${state.lobby?.name ?? '无'}`
-      );
+      changes.push(`大厅: ${previousState.lobby?.name ?? '无'} → ${state.lobby?.name ?? '无'}`);
     }
     if (state.players.length !== previousState.players.length) {
-      changes.push(
-        `玩家数量: ${previousState.players.length} → ${state.players.length}`
-      );
+      changes.push(`玩家数量: ${previousState.players.length} → ${state.players.length}`);
     }
     if (state.micEnabled !== previousState.micEnabled) {
       changes.push(`麦克风: ${previousState.micEnabled} → ${state.micEnabled}`);
     }
     if (state.globalMuted !== previousState.globalMuted) {
-      changes.push(
-        `全局静音: ${previousState.globalMuted} → ${state.globalMuted}`
-      );
+      changes.push(`全局静音: ${previousState.globalMuted} → ${state.globalMuted}`);
     }
 
     if (changes.length > 0) {
@@ -138,11 +137,16 @@ export const createTestLobby = (): void => {
  */
 export const exportStoreState = (): string => {
   const state = useAppStore.getState();
-  const safeLobby = state.lobby ? { ...state.lobby, password: state.lobby.password ? '[redacted]' : undefined } : null;
+  const safeLobby = state.lobby
+    ? { ...state.lobby, password: state.lobby.password ? '[redacted]' : undefined }
+    : null;
   const safeConfig = {
     ...state.config,
     autoLobby: state.config.autoLobby
-      ? { ...state.config.autoLobby, lobbyPassword: state.config.autoLobby.lobbyPassword ? '[redacted]' : undefined }
+      ? {
+          ...state.config.autoLobby,
+          lobbyPassword: state.config.autoLobby.lobbyPassword ? '[redacted]' : undefined,
+        }
       : state.config.autoLobby,
   };
   return JSON.stringify(
@@ -179,8 +183,6 @@ export const mountDevtools = (): void => {
       exportState: exportStoreState,
       store: useAppStore,
     };
-    console.log(
-      '🛠️ MCTier 开发工具已挂载到 window.MCTierDevtools'
-    );
+    console.log('🛠️ MCTier 开发工具已挂载到 window.MCTierDevtools');
   }
 };

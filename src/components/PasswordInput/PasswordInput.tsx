@@ -12,8 +12,9 @@ export type PasswordInputProps = Omit<InputProps, 'type'>;
  * 跨平台密码输入框。
  *
  * Windows（WebView2）直接用 antd 的原生密码框，保留浏览器的密码语义。
- * Linux（WebKitGTK）下原生密码框会被 fcitx5 / ibus 的 GTK 输入法模块吞键，
- * 密码一个字都打不进去（issue #42 实机反馈），因此改用普通文本框 +
+ * Linux（WebKitGTK）下原生密码框会被 fcitx5 / ibus 的 GTK 输入法模块吞键；
+ * macOS（WKWebView）下原生安全输入框可能卡住首次聚焦。
+ * 因此这两个 WebKit 平台改用普通文本框 +
  * CSS `-webkit-text-security` 遮罩，从引擎层绕开这条冲突路径。
  *
  * 两条分支对外的 props 与受控行为完全一致，可直接替换 `Input.Password`，

@@ -150,6 +150,10 @@ pub fn parse_public_key_b64(encoded: &str) -> Option<Vec<u8>> {
 /// member from taking a request addressed to itself and forwarding it to a
 /// third member, who would otherwise accept it as freshly authored by the
 /// original signer.
+// These are the independent fields of the signed wire protocol. Grouping them only
+// to satisfy this style lint would make call sites less auditable and risks swapping
+// adjacent string fields without changing the type signature.
+#[allow(clippy::too_many_arguments)]
 pub fn canonical_request(
     method: &str,
     path: &str,
@@ -244,6 +248,9 @@ impl ChatSigner {
     /// Sign a request and return the header material the peer needs.
     ///
     /// `audience` must be the virtual IP of the peer the request is sent to.
+    // Keep the signing call aligned with `canonical_request`: every security-relevant
+    // field remains explicit at the call site and in the same order as the wire form.
+    #[allow(clippy::too_many_arguments)]
     pub fn sign(
         &self,
         method: &str,

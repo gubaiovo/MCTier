@@ -6,11 +6,7 @@ interface MicIconProps {
   className?: string;
 }
 
-export const MicIcon: React.FC<MicIconProps> = ({ 
-  enabled = false, 
-  size = 24,
-  className = '' 
-}) => {
+export const MicIcon: React.FC<MicIconProps> = ({ enabled = false, size = 24, className = '' }) => {
   if (enabled) {
     // 麦克风开启图标
     return (
@@ -30,14 +26,8 @@ export const MicIcon: React.FC<MicIconProps> = ({
           d="M17 11C17 14.76 13.76 18 10 18V20C14.97 20 19 15.97 19 11H17Z"
           fill="currentColor"
         />
-        <path
-          d="M7 11H5C5 15.97 9.03 20 14 20V18C10.24 18 7 14.76 7 11Z"
-          fill="currentColor"
-        />
-        <path
-          d="M11 22H13V18H11V22Z"
-          fill="currentColor"
-        />
+        <path d="M7 11H5C5 15.97 9.03 20 14 20V18C10.24 18 7 14.76 7 11Z" fill="currentColor" />
+        <path d="M11 22H13V18H11V22Z" fill="currentColor" />
       </svg>
     );
   }
@@ -68,11 +58,7 @@ export const MicIcon: React.FC<MicIconProps> = ({
         fill="currentColor"
         opacity="0.5"
       />
-      <path
-        d="M11 22H13V18H11V22Z"
-        fill="currentColor"
-        opacity="0.5"
-      />
+      <path d="M11 22H13V18H11V22Z" fill="currentColor" opacity="0.5" />
       {/* 斜线 */}
       <line
         x1="4"

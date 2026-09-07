@@ -31,11 +31,18 @@ export const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
   const handleDownload = async () => {
     try {
       await open(DOWNLOAD_WEBSITE);
-      message.success(tl('已在浏览器中打开 MCTier 官网', 'Opened the MCTier website in your browser'));
+      message.success(
+        tl('已在浏览器中打开 MCTier 官网', 'Opened the MCTier website in your browser')
+      );
       onClose();
     } catch (error) {
       console.error('打开 MCTier 官网失败:', error);
-      message.error(tl('无法打开官网，请手动访问 mctier.pmhs.top', 'Unable to open the website. Visit mctier.pmhs.top manually.'));
+      message.error(
+        tl(
+          '无法打开官网，请手动访问 mctier.pmhs.top',
+          'Unable to open the website. Visit mctier.pmhs.top manually.'
+        )
+      );
     }
   };
 
@@ -43,7 +50,14 @@ export const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
     <Modal
       title={
         <div className="version-update-modal-title">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
@@ -65,7 +79,14 @@ export const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
             <span className="version-number current">v{currentVersion}</span>
           </div>
           <div className="version-arrow">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
             </svg>
@@ -78,14 +99,21 @@ export const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
         {/* 更新日志 */}
         <div className="update-log-section">
           <div className="update-log-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
               <line x1="16" y1="13" x2="8" y2="13" />
               <line x1="16" y1="17" x2="8" y2="17" />
               <polyline points="10 9 9 9 8 9" />
             </svg>
-            <span>{tl('更新内容', 'What\'s New')}</span>
+            <span>{tl('更新内容', "What's New")}</span>
           </div>
           <div className="update-log-list">
             {updateMessage.map((item, index) => (
@@ -119,7 +147,14 @@ export const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />

@@ -523,6 +523,12 @@ impl ChatService {
     }
 }
 
+impl Default for ChatService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn build_identity_map(
     local: &ChatPeerIdentity,
     peers: Vec<ChatPeerIdentity>,
@@ -840,7 +846,7 @@ fn validate_request(
     {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let content_bytes = request.content.as_bytes().len();
+    let content_bytes = request.content.len();
     match request.message_type {
         MessageType::Text => {
             if content_bytes == 0 || content_bytes > MAX_TEXT_BYTES || request.image_data.is_some()

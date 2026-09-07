@@ -21,12 +21,12 @@ export const VoiceControls: React.FC = () => {
   const toggleGlobalMute = useAppStore((state) => state.toggleGlobalMute);
   const mutedPlayers = useAppStore((state) => state.mutedPlayers);
   const applyVoiceGroupRouting = useAppStore((state) => state.applyVoiceGroupRouting);
-  
+
   const [micLoading, setMicLoading] = useState(false);
   const [muteLoading, setMuteLoading] = useState(false);
   const [volume, setVolume] = useState(100); // 音量百分比 (0-100)
   const [volumeLoading, setVolumeLoading] = useState(true);
-  
+
   // 快捷键提示：读取用户在设置中自定义的键位（读取前先用默认值占位）
   const [micHotkey, setMicHotkey] = useState('Ctrl+M');
   const [globalMuteHotkey, setGlobalMuteHotkey] = useState('Ctrl+T');
@@ -61,7 +61,7 @@ export const VoiceControls: React.FC = () => {
         console.error('同步麦克风状态失败:', error);
       }
     };
-    
+
     syncMicState();
   }, [micEnabled]);
 
@@ -88,7 +88,9 @@ export const VoiceControls: React.FC = () => {
     try {
       setMicLoading(true);
       toggleMic();
-      message.success(micEnabled ? tl('麦克风已关闭', 'Microphone off') : tl('麦克风已开启', 'Microphone on'));
+      message.success(
+        micEnabled ? tl('麦克风已关闭', 'Microphone off') : tl('麦克风已开启', 'Microphone on')
+      );
     } catch (error) {
       console.error('切换麦克风失败:', error);
       message.error(tl('麦克风操作失败，请重试', 'Microphone operation failed, please retry'));
@@ -102,7 +104,11 @@ export const VoiceControls: React.FC = () => {
     try {
       setMuteLoading(true);
       toggleGlobalMute();
-      message.success(globalMuted ? tl('已取消全局静音', 'Global mute disabled') : tl('已开启全局静音', 'Global mute enabled'));
+      message.success(
+        globalMuted
+          ? tl('已取消全局静音', 'Global mute disabled')
+          : tl('已开启全局静音', 'Global mute enabled')
+      );
     } catch (error) {
       console.error('切换全局静音失败:', error);
       message.error(tl('静音操作失败，请重试', 'Mute operation failed, please retry'));
@@ -115,10 +121,10 @@ export const VoiceControls: React.FC = () => {
   const handleVolumeChange = async (value: number) => {
     setVolume(value);
     const volumeValue = value / 100;
-    
+
     // 应用音量到 WebRTC 客户端
     webrtcClient.setVolume(volumeValue);
-    
+
     // 保存音量设置
     try {
       await invoke('save_voice_volume', { volume: volumeValue });
@@ -139,7 +145,9 @@ export const VoiceControls: React.FC = () => {
         >
           <div className="volume-slider-label">
             <VolumeIcon muted={volume === 0} size={16} />
-            <span>{tl('音量', 'Volume')}: {volume}%</span>
+            <span>
+              {tl('音量', 'Volume')}: {volume}%
+            </span>
           </div>
           <Slider
             min={0}
@@ -160,7 +168,11 @@ export const VoiceControls: React.FC = () => {
         transition={{ duration: 0.3 }}
       >
         <Tooltip
-          title={micEnabled ? `${tl('关闭麦克风', 'Turn off microphone')} (${micHotkey})` : `${tl('开启麦克风', 'Turn on microphone')} (${micHotkey})`}
+          title={
+            micEnabled
+              ? `${tl('关闭麦克风', 'Turn off microphone')} (${micHotkey})`
+              : `${tl('开启麦克风', 'Turn on microphone')} (${micHotkey})`
+          }
           placement="top"
         >
           <motion.div
@@ -211,7 +223,11 @@ export const VoiceControls: React.FC = () => {
         transition={{ duration: 0.3, delay: 0.1 }}
       >
         <Tooltip
-          title={globalMuted ? `${tl('取消全局静音', 'Disable global mute')} (${globalMuteHotkey})` : `${tl('全局静音所有玩家', 'Mute all players')} (${globalMuteHotkey})`}
+          title={
+            globalMuted
+              ? `${tl('取消全局静音', 'Disable global mute')} (${globalMuteHotkey})`
+              : `${tl('全局静音所有玩家', 'Mute all players')} (${globalMuteHotkey})`
+          }
           placement="top"
         >
           <motion.div

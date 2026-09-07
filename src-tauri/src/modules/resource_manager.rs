@@ -1,4 +1,4 @@
-﻿use crate::modules::error::AppError;
+use crate::modules::error::AppError;
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -9,6 +9,7 @@ use tauri::Manager;
 //
 // Windows：easytier-core.exe / easytier-cli.exe，外加 2 个驱动类文件
 //   （wintun.dll / WinDivert64.sys）。
+// macOS：只需对应架构的 easytier-core / easytier-cli。
 // Linux：只需 easytier-core / easytier-cli —— 虚拟网卡由内核 TUN
 //   （/dev/net/tun）提供，不存在与 wintun/WinDivert 对应的用户态驱动，
 //   因此那 2 个文件在 Linux 上既不内嵌也不提取。
@@ -31,23 +32,30 @@ static WINTUN_DLL_BYTES: &[u8] = include_bytes!("../../resources/binaries/wintun
 #[allow(dead_code)]
 static WINDIVERT_SYS_BYTES: &[u8] = include_bytes!("../../resources/binaries/WinDivert64.sys");
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+static EASYTIER_CORE_BYTES: &[u8] = include_bytes!("../../resources/binaries/easytier-core");
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+static EASYTIER_CLI_BYTES: &[u8] = include_bytes!("../../resources/binaries/easytier-cli");
+
+#[cfg(target_os = "linux")]
 #[allow(dead_code)]
 static EASYTIER_CORE_BYTES: &[u8] = include_bytes!("../../resources/binaries/linux/easytier-core");
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 #[allow(dead_code)]
 static EASYTIER_CLI_BYTES: &[u8] = include_bytes!("../../resources/binaries/linux/easytier-cli");
 
 /// EasyTier 可执行文件名（Windows 带 .exe 扩展名，类 Unix 不带）。
 /// 集中成常量，避免路径拼接处散落平台判断。
 #[cfg(windows)]
-const EASYTIER_CORE_FILE: &str = "easytier-core.exe";
+const EASYTIER_CORE_FILENAME: &str = "easytier-core.exe";
 #[cfg(windows)]
-const EASYTIER_CLI_FILE: &str = "easytier-cli.exe";
-#[cfg(not(windows))]
-const EASYTIER_CORE_FILE: &str = "easytier-core";
-#[cfg(not(windows))]
-const EASYTIER_CLI_FILE: &str = "easytier-cli";
+const EASYTIER_CLI_FILENAME: &str = "easytier-cli.exe";
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const EASYTIER_CORE_FILENAME: &str = "easytier-core";
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const EASYTIER_CLI_FILENAME: &str = "easytier-cli";
 
 /// 资源管理器
 ///
@@ -56,6 +64,20 @@ const EASYTIER_CLI_FILE: &str = "easytier-cli";
 pub struct ResourceManager;
 
 impl ResourceManager {
+    #[cfg(all(target_os = "macos", not(debug_assertions)))]
+    fn macos_bundle_binary(filename: &str) -> Result<PathBuf, AppError> {
+        let executable = std::env::current_exe()
+            .map_err(|e| AppError::ConfigError(format!("无法获取应用路径: {}", e)))?;
+        let directory = executable
+            .parent()
+            .ok_or_else(|| AppError::ConfigError("应用路径缺少父目录".to_string()))?;
+        let path = directory.join(filename);
+        Self::ensure_regular_file(&path)?;
+        // Sidecars belong to the signed .app and are signed/notarized by Tauri.
+        // Never rewrite them or compare them with the unsigned embedded input.
+        Ok(path)
+    }
+
     fn embedded_bytes(filename: &str) -> Option<&'static [u8]> {
         match filename {
             #[cfg(windows)]
@@ -137,11 +159,11 @@ impl ResourceManager {
     pub fn get_runtime_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         #[cfg(windows)]
         {
-            return app_handle
+            app_handle
                 .path()
                 .resource_dir()
                 .map(|path| path.join("runtime"))
-                .map_err(|e| AppError::ConfigError(format!("无法获取资源目录: {}", e)));
+                .map_err(|e| AppError::ConfigError(format!("无法获取资源目录: {}", e)))
         }
 
         #[cfg(not(windows))]
@@ -200,6 +222,7 @@ impl ResourceManager {
                         .map_err(|e| AppError::ConfigError(format!("读取资源文件失败: {}", e)))?,
                 ) == Self::sha256_hex(expected)
                 {
+                    Self::ensure_executable(path)?;
                     return Ok(path.to_path_buf());
                 }
                 fs::remove_file(path).map_err(|e| {
@@ -262,8 +285,9 @@ impl ResourceManager {
                 let up3 = exe_dir.join("..").join("..").join("..");
                 candidates.push(up3.join("binaries").join(filename));
                 candidates.push(up3.join("resources").join("binaries").join(filename));
-                // Linux 侧二进制放在 resources/binaries/linux/ 下
-                #[cfg(not(windows))]
+                // Linux 侧二进制放在 resources/binaries/linux/ 下；macOS 使用
+                // resources/binaries/ 下的同名 Darwin 二进制。
+                #[cfg(target_os = "linux")]
                 {
                     candidates.push(exe_dir.join("binaries").join("linux").join(filename));
                     candidates.push(up3.join("binaries").join("linux").join(filename));
@@ -277,18 +301,13 @@ impl ResourceManager {
             }
         }
 
-        for candidate in candidates {
-            if fs::symlink_metadata(&candidate)
+        candidates.into_iter().find(|candidate| {
+            fs::symlink_metadata(candidate)
                 .ok()
                 .is_some_and(|metadata| {
                     !Self::is_link_or_reparse_point(&metadata) && metadata.is_file()
                 })
-            {
-                return Some(candidate);
-            }
-        }
-
-        None
+        })
     }
 
     /// 获取运行时目录（用于存放提取的二进制文件）
@@ -349,6 +368,27 @@ impl ResourceManager {
         Ok(target_path)
     }
 
+    #[cfg(unix)]
+    fn ensure_executable(path: &std::path::Path) -> Result<(), AppError> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = fs::metadata(path)
+            .map_err(|e| AppError::ConfigError(format!("无法读取文件权限 {:?}: {}", path, e)))?
+            .permissions();
+        let mode = permissions.mode();
+        if mode & 0o111 == 0 {
+            permissions.set_mode(mode | 0o755);
+            fs::set_permissions(path, permissions).map_err(|e| {
+                AppError::ConfigError(format!("无法为二进制设置执行权限 {:?}: {}", path, e))
+            })?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    fn ensure_executable(_path: &std::path::Path) -> Result<(), AppError> {
+        Ok(())
+    }
     /// 获取 EasyTier 可执行文件的路径
     ///
     /// # 参数
@@ -357,71 +397,82 @@ impl ResourceManager {
     /// # 返回
     /// * `Ok(PathBuf)` - EasyTier 可执行文件的完整路径
     /// * `Err(AppError)` - 获取路径失败
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     pub fn get_easytier_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         // 🔧 Windows 开发模式：优先使用 debug binaries
-        #[cfg(all(windows, debug_assertions))]
-        {
-            if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CORE_FILE) {
-                log::info!("Windows 开发模式 - 使用 EasyTier 路径: {:?}", path);
-                return Ok(path);
-            }
-            log::warn!("Windows 开发模式 - 未找到外部 EasyTier，回退到 runtime 提取");
-        }
-
         // Windows 生产模式
         #[cfg(all(windows, not(debug_assertions)))]
         {
-            return Ok(Self::get_runtime_path(app_handle)?.join(EASYTIER_CORE_FILE));
+            return Ok(Self::get_runtime_path(app_handle)?.join(EASYTIER_CORE_FILENAME));
         }
 
         // 在开发模式下，优先使用 target 目录中的 binaries；不存在时退回到嵌入提取
         #[cfg(debug_assertions)]
         {
-            if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CORE_FILE) {
+            if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CORE_FILENAME) {
                 log::info!("开发模式 - 使用 EasyTier 路径: {:?}", path);
                 return Ok(path);
             }
 
-            log::warn!("开发模式 - 未找到外部 EasyTier，回退到内嵌资源提取");
-            return Self::extract_binary(app_handle, EASYTIER_CORE_FILE, EASYTIER_CORE_BYTES);
+            log::warn!(
+                "开发模式 - 未找到外部 {}，回退到内嵌资源提取",
+                EASYTIER_CORE_FILENAME
+            );
+            Self::extract_binary(app_handle, EASYTIER_CORE_FILENAME, EASYTIER_CORE_BYTES)
         }
 
         // 在生产模式下，从嵌入的二进制文件中提取
-        #[cfg(not(debug_assertions))]
+        #[cfg(all(target_os = "macos", not(debug_assertions)))]
         {
-            Self::extract_binary(app_handle, EASYTIER_CORE_FILE, EASYTIER_CORE_BYTES)
+            let _ = app_handle;
+            Self::macos_bundle_binary(EASYTIER_CORE_FILENAME)
+        }
+        #[cfg(all(not(any(windows, target_os = "macos")), not(debug_assertions)))]
+        {
+            Self::extract_binary(app_handle, EASYTIER_CORE_FILENAME, EASYTIER_CORE_BYTES)
         }
     }
 
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    pub fn get_easytier_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
+        Err(AppError::ProcessError(
+            "当前桌面平台尚未提供 EasyTier 二进制".to_string(),
+        ))
+    }
+
     /// 获取 easytier-cli 可执行文件的路径（用于查询对等连接类型 P2P/中继）
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     pub fn get_easytier_cli_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         // 🔧 Windows 开发模式：优先使用 debug binaries
-        #[cfg(all(windows, debug_assertions))]
-        {
-            if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CLI_FILE) {
-                log::info!("Windows 开发模式 - 使用 EasyTier CLI 路径: {:?}", path);
-                return Ok(path);
-            }
-            log::warn!("Windows 开发模式 - 未找到外部 EasyTier CLI，回退到 runtime 提取");
-        }
-
         // Windows 生产模式
         #[cfg(all(windows, not(debug_assertions)))]
         {
-            return Ok(Self::get_runtime_path(app_handle)?.join(EASYTIER_CLI_FILE));
+            return Ok(Self::get_runtime_path(app_handle)?.join(EASYTIER_CLI_FILENAME));
         }
 
         #[cfg(debug_assertions)]
         {
-            if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CLI_FILE) {
+            if let Some(path) = Self::find_debug_binary(app_handle, EASYTIER_CLI_FILENAME) {
                 return Ok(path);
             }
-            return Self::extract_binary(app_handle, EASYTIER_CLI_FILE, EASYTIER_CLI_BYTES);
+            Self::extract_binary(app_handle, EASYTIER_CLI_FILENAME, EASYTIER_CLI_BYTES)
         }
-        #[cfg(not(debug_assertions))]
+        #[cfg(all(target_os = "macos", not(debug_assertions)))]
         {
-            Self::extract_binary(app_handle, EASYTIER_CLI_FILE, EASYTIER_CLI_BYTES)
+            let _ = app_handle;
+            Self::macos_bundle_binary(EASYTIER_CLI_FILENAME)
         }
+        #[cfg(all(not(any(windows, target_os = "macos")), not(debug_assertions)))]
+        {
+            Self::extract_binary(app_handle, EASYTIER_CLI_FILENAME, EASYTIER_CLI_BYTES)
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    pub fn get_easytier_cli_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
+        Err(AppError::ProcessError(
+            "当前桌面平台尚未提供 EasyTier CLI 二进制".to_string(),
+        ))
     }
 
     /// 获取 wintun.dll 的路径（仅 Windows；Linux 走内核 TUN，无此依赖）
@@ -429,7 +480,6 @@ impl ResourceManager {
     pub fn get_wintun_dll_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         Ok(Self::get_runtime_path(app_handle)?.join("wintun.dll"))
     }
-
     /// 获取 WinDivert64.sys 的路径（仅 Windows；Linux 走内核 TUN，无此依赖）
     #[cfg(windows)]
     pub fn get_windivert_sys_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
@@ -485,10 +535,11 @@ impl ResourceManager {
 
 #[cfg(test)]
 mod tests {
+    use super::{EASYTIER_CLI_FILENAME, EASYTIER_CORE_FILENAME};
+
     #[test]
-    fn test_resource_manager_exists() {
-        // 这个测试只是确保模块可以编译
-        // 实际的路径测试需要在集成测试中进行
-        assert!(true);
+    fn embedded_binary_filenames_are_present() {
+        assert!(!EASYTIER_CORE_FILENAME.is_empty());
+        assert!(!EASYTIER_CLI_FILENAME.is_empty());
     }
 }

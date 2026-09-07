@@ -19,7 +19,9 @@ export const VoiceChangerPicker: React.FC = () => {
 
   // 组件卸载时停止试听，释放麦克风
   useEffect(() => {
-    return () => { void voiceChangerService.stopAudition(); };
+    return () => {
+      void voiceChangerService.stopAudition();
+    };
   }, []);
 
   const pick = (p: VoicePreset) => {
@@ -35,11 +37,18 @@ export const VoiceChangerPicker: React.FC = () => {
       } else {
         await voiceChangerService.startAudition();
         setAuditioning(true);
-        message.info(tl('试听已开启：请说话，即可实时听到变声效果', 'Audition on: speak now to hear the effect in real time'));
+        message.info(
+          tl(
+            '试听已开启：请说话，即可实时听到变声效果',
+            'Audition on: speak now to hear the effect in real time'
+          )
+        );
       }
     } catch (e) {
       console.error(e);
-      message.error(tl('无法打开麦克风，请检查权限', 'Cannot access microphone, please check permissions'));
+      message.error(
+        tl('无法打开麦克风，请检查权限', 'Cannot access microphone, please check permissions')
+      );
       setAuditioning(false);
     }
   };
@@ -59,11 +68,16 @@ export const VoiceChangerPicker: React.FC = () => {
       </div>
       <button
         className={`vc-audition-btn ${auditioning ? 'active' : ''}`}
-        onClick={() => { void toggleAudition(); }}
+        onClick={() => {
+          void toggleAudition();
+        }}
       >
         {auditioning ? tl('停止试听', 'Stop audition') : tl('试听变声', 'Audition voice')}
       </button>
-      <div className="vc-risk-note" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, color: 'rgba(255,90,90,0.8)' }}>
+      <div
+        className="vc-risk-note"
+        style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, color: 'rgba(255,90,90,0.8)' }}
+      >
         {tl(
           '风险提示：变声功能仅供娱乐与正常社交使用，严禁用于电信网络诈骗、冒充他人身份或任何欺骗、骚扰行为，违者自负法律责任。',
           'Notice: the voice changer is for entertainment and normal social use only. Using it for telecom fraud, impersonation, deception or harassment is strictly prohibited; violators bear legal liability.'

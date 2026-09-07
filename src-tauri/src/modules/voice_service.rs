@@ -180,23 +180,20 @@ impl VoiceService {
 
         // 注意：这里是模拟实现，实际项目中需要使用 cpal 或其他音频库
         // 来真正枚举系统音频设备
-        let mut devices = Vec::new();
-
-        // 添加默认麦克风设备
-        devices.push(AudioDevice {
-            id: "default_mic".to_string(),
-            name: "默认麦克风".to_string(),
-            device_type: DeviceType::Microphone,
-            is_default: true,
-        });
-
-        // 添加默认扬声器设备
-        devices.push(AudioDevice {
-            id: "default_speaker".to_string(),
-            name: "默认扬声器".to_string(),
-            device_type: DeviceType::Speaker,
-            is_default: true,
-        });
+        let devices = vec![
+            AudioDevice {
+                id: "default_mic".to_string(),
+                name: "默认麦克风".to_string(),
+                device_type: DeviceType::Microphone,
+                is_default: true,
+            },
+            AudioDevice {
+                id: "default_speaker".to_string(),
+                name: "默认扬声器".to_string(),
+                device_type: DeviceType::Speaker,
+                is_default: true,
+            },
+        ];
 
         // 更新内部设备列表
         let mut audio_devices = self.audio_devices.write().await;
@@ -777,12 +774,12 @@ mod tests {
 
         let result = service.set_mic_enabled(true).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
         assert!(service.is_mic_enabled());
 
         let result = service.set_mic_enabled(false).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
         assert!(!service.is_mic_enabled());
     }
 
@@ -839,7 +836,7 @@ mod tests {
         // 验证状态已保存
         let saved_status = service.get_player_status("player_123").await;
         assert!(saved_status.is_some());
-        assert_eq!(saved_status.unwrap().mic_enabled, true);
+        assert!(saved_status.unwrap().mic_enabled);
 
         // 验证信令消息已加入队列
         let messages = service.get_signaling_messages().await;
@@ -861,7 +858,7 @@ mod tests {
         // 验证玩家状态已创建
         let status = service.get_player_status("player_123").await;
         assert!(status.is_some());
-        assert_eq!(status.unwrap().mic_enabled, false);
+        assert!(!status.unwrap().mic_enabled);
     }
 
     #[tokio::test]
@@ -907,7 +904,7 @@ mod tests {
         // 验证状态已更新
         let status = service.get_player_status("player_123").await;
         assert!(status.is_some());
-        assert_eq!(status.unwrap().mic_enabled, true);
+        assert!(status.unwrap().mic_enabled);
     }
 
     #[tokio::test]

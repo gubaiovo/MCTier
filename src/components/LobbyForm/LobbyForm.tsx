@@ -25,6 +25,7 @@ import {
 import { prepareSignalingIdentity } from '../../services/signaling/signalingIdentity';
 import { useTranslation } from 'react-i18next';
 import { tl, getLanguage } from '../../i18n';
+import { startWindowDrag } from '../../utils/windowDrag';
 import { isSafeServerNode, isSafeSignalingServer } from '../../security/trustBoundary';
 import './LobbyForm.css';
 
@@ -456,6 +457,8 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   const { i18n } = useTranslation();
   const { message } = AntdApp.useApp();
   const { setAppState, setLobby, config } = useAppStore();
+  const isMacOS =
+    typeof navigator !== 'undefined' && /Macintosh|Mac OS X/.test(navigator.userAgent);
   const [form] = Form.useForm<LobbyFormValues>();
   const [loading, setLoading] = useState(false);
   const preferredServerSaveGeneration = useRef(0);
@@ -472,7 +475,6 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
     privateEasytierServer: 'udp://us01.225284.xyz:11010',
     privateSignalingServer: 'wss://test.pmhs.top',
   });
-  // @ts-ignore - customNodes is used in useEffect to load custom nodes
   const [customNodes, setCustomNodes] = useState<CustomEasyTierNode[]>([]);
   const [serverNodes, setServerNodes] = useState(getServerNodes([]));
   const [temporaryServerNode, setTemporaryServerNode] = useState<string>();
@@ -575,7 +577,6 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   // 语言切换时重算服务器节点下拉的标签
   useEffect(() => {
     setServerNodes(getServerNodes(customNodes));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [i18n.language, customNodes]);
 
   // 一键随机生成大厅名称和密码
@@ -909,8 +910,13 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       setLoading(true);
       setAppState('connecting');
 
+      // 创建 EasyTier 网络和注册信令大厅必须使用完全相同的规范化凭据。
+      // 只在这里做一次 trim，避免表单/后端/重连分别处理后产生房间分叉。
+      const lobbyName = values.lobbyName?.trim() || '';
+      const lobbyPassword = values.password?.trim() || '';
+
       // 验证输入
-      if (!values.lobbyName?.trim()) {
+      if (!lobbyName) {
         message.error(tl('大厅名称不能为空', 'Lobby name cannot be empty'));
         return;
       }
@@ -1007,8 +1013,8 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
 
       // 调用后端命令
       const lobby = await invoke<Lobby>(commandName, {
-        name: values.lobbyName.trim(),
-        password: values.password.trim(),
+        name: lobbyName,
+        password: lobbyPassword,
         playerName: values.playerName.trim(),
         playerId: currentPlayerId,
         serverNode: serverNode,
@@ -1075,7 +1081,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
       // 记录到"最近大厅"，便于下次快速重进
       try {
         recentService.recordLobby({
-          name: values.lobbyName.trim(),
+          name: lobbyName,
           playerName: values.playerName.trim(),
           useDomain: values.useDomain === true,
           serverNode,
@@ -1092,13 +1098,8 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         console.warn('记录统计会话失败（忽略）:', e);
       }
 
-      message.success(
-        mode === 'create'
-          ? tl('大厅创建成功！', 'Lobby created!')
-          : tl('成功加入大厅！', 'Joined the lobby!')
-      );
-
-      // 关闭表单
+      // WebSocket 注册仍在 App 的大厅协调器中进行。成功提示必须等到
+      // register-success，不能只凭 EasyTier 已拿到虚拟 IP 就提前显示。
       onClose();
     } catch (error) {
       if (
@@ -1135,7 +1136,10 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
         errorMessage.includes('权限') ||
         errorMessage.includes('permission') ||
         errorMessage.includes('administrator') ||
-        errorMessage.includes('740'); // Windows 错误代码 740 表示需要提升权限
+        errorMessage.includes('740') || // Windows 错误代码 740 表示需要提升权限
+        errorMessage.includes('macOS') ||
+        errorMessage.includes('utun') ||
+        errorMessage.includes('虚拟网卡创建失败');
 
       // 检查是否是版本过低错误
       const isVersionError =
@@ -1150,10 +1154,15 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
           content: (
             <div>
               <p style={{ marginBottom: '12px' }}>
-                {tl(
-                  'MCTier 需要管理员权限来创建虚拟网卡。',
-                  'MCTier needs administrator rights to create the virtual adapter.'
-                )}
+                {isMacOS
+                  ? tl(
+                      'macOS 需要管理员授权来创建 utun 虚拟网卡。点击重试时会弹出系统密码对话框。',
+                      'macOS requires administrator authorization to create the utun virtual adapter. A system password dialog will appear when you retry.'
+                    )
+                  : tl(
+                      'MCTier 需要管理员权限来创建虚拟网卡。',
+                      'MCTier needs administrator rights to create the virtual adapter.'
+                    )}
               </p>
             </div>
           ),
@@ -1209,7 +1218,12 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 'This node failed to connect. Click a button below to try another node, or:'
               )}
               <br />
-              {tl('1. 以管理员身份运行 MCTier', '1. Run MCTier as administrator')}
+              {isMacOS
+                ? tl(
+                    '1. 在 macOS 密码对话框中授权创建 utun 虚拟网卡',
+                    '1. Authorize utun creation in the macOS password dialog'
+                  )
+                : tl('1. 以管理员身份运行 MCTier', '1. Run MCTier as administrator')}
               <br />
               {tl(
                 '2. 将 MCTier 加入杀毒软件 / 防火墙白名单',
@@ -1288,10 +1302,15 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 >
                   {tl('可尝试：', 'You can try:')}
                   <br />
-                  {tl(
-                    '1. 以管理员身份运行 MCTier（创建虚拟网卡需要管理员权限）',
-                    '1. Run MCTier as administrator (creating the virtual adapter needs admin rights)'
-                  )}
+                  {isMacOS
+                    ? tl(
+                        '1. 在 macOS 密码对话框中授权创建 utun 虚拟网卡',
+                        '1. Authorize utun creation in the macOS password dialog'
+                      )
+                    : tl(
+                        '1. 以管理员身份运行 MCTier（创建虚拟网卡需要管理员权限）',
+                        '1. Run MCTier as administrator (creating the virtual adapter needs admin rights)'
+                      )}
                   <br />
                   {tl(
                     '2. 将 MCTier 加入杀毒软件 / 防火墙白名单后重试',
@@ -1363,7 +1382,14 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
   });
 
   return (
-    <div className="lobby-form-container" data-tauri-drag-region>
+    <div className="lobby-form-container">
+      <div
+        className="lobby-form-drag-strip"
+        data-tauri-drag-region
+        onMouseDown={startWindowDrag}
+        aria-hidden="true"
+      />
+
       <motion.div
         ref={scrollContainerRef}
         className="lobby-form-card"
@@ -1605,7 +1631,9 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                 )}
                 size="large"
                 disabled={loading}
-                autoComplete="new-password"
+                autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+                autoCapitalize="none"
+                autoCorrect="off"
                 spellCheck={false}
               />
             </Form.Item>
@@ -1735,10 +1763,7 @@ export const LobbyForm: React.FC<LobbyFormProps> = ({ mode, onClose }) => {
                   ]}
                 >
                   <Input
-                    placeholder={tl(
-                      '例如：wss://test.pmhs.top',
-                      'e.g. wss://test.pmhs.top'
-                    )}
+                    placeholder={tl('例如：wss://test.pmhs.top', 'e.g. wss://test.pmhs.top')}
                     size="large"
                     disabled={loading}
                     autoComplete="off"

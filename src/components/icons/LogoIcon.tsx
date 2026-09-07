@@ -5,10 +5,7 @@ interface LogoIconProps {
   className?: string;
 }
 
-export const LogoIcon: React.FC<LogoIconProps> = ({ 
-  size = 48,
-  className = '' 
-}) => {
+export const LogoIcon: React.FC<LogoIconProps> = ({ size = 48, className = '' }) => {
   return (
     <svg
       width={size}
@@ -19,33 +16,14 @@ export const LogoIcon: React.FC<LogoIconProps> = ({
       className={className}
     >
       {/* 外圈 */}
-      <circle
-        cx="24"
-        cy="24"
-        r="20"
-        stroke="currentColor"
-        strokeWidth="2"
-        opacity="0.3"
-      />
-      
+      <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="2" opacity="0.3" />
+
       {/* 中圈 */}
-      <circle
-        cx="24"
-        cy="24"
-        r="14"
-        stroke="currentColor"
-        strokeWidth="2"
-        opacity="0.6"
-      />
-      
+      <circle cx="24" cy="24" r="14" stroke="currentColor" strokeWidth="2" opacity="0.6" />
+
       {/* 内圈 */}
-      <circle
-        cx="24"
-        cy="24"
-        r="8"
-        fill="currentColor"
-      />
-      
+      <circle cx="24" cy="24" r="8" fill="currentColor" />
+
       {/* 连接线 */}
       <line
         x1="24"

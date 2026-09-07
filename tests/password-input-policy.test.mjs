@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isLinuxUserAgent,
+  isMacUserAgent,
   shouldAvoidNativePasswordInput,
 } from '../src/utils/passwordInputPolicy.ts';
 
@@ -14,7 +15,11 @@ const LINUX_AGENTS = [
 
 const NON_LINUX_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36 Edg/120',
+];
+
+const MAC_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
+  'Mozilla/5.0 (Macintosh; Apple Silicon Mac OS X 14_5) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15',
 ];
 
 test('Linux user agents avoid the native password input', () => {
@@ -24,10 +29,17 @@ test('Linux user agents avoid the native password input', () => {
   }
 });
 
-test('Windows and macOS keep the native password input', () => {
+test('Windows keeps the native password input', () => {
   for (const agent of NON_LINUX_AGENTS) {
     assert.equal(isLinuxUserAgent(agent), false, agent);
     assert.equal(shouldAvoidNativePasswordInput(agent), false, agent);
+  }
+});
+
+test('macOS avoids the native password input', () => {
+  for (const agent of MAC_AGENTS) {
+    assert.equal(isMacUserAgent(agent), true, agent);
+    assert.equal(shouldAvoidNativePasswordInput(agent), true, agent);
   }
 });
 
@@ -35,7 +47,14 @@ test('Android is not treated as desktop Linux even though its UA says Linux', ()
   // 安卓端是独立的原生应用，不使用这套 WebView 组件；误判会让它走无谓的降级分支。
   const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36';
   assert.equal(isLinuxUserAgent(android), false);
+  assert.equal(isMacUserAgent(android), false);
   assert.equal(shouldAvoidNativePasswordInput(android), false);
+});
+
+test('iOS devices are not treated as macOS', () => {
+  const ipad = 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148';
+  assert.equal(isMacUserAgent(ipad), false);
+  assert.equal(shouldAvoidNativePasswordInput(ipad), false);
 });
 
 test('missing or malformed user agents fall back to the native input', () => {

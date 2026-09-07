@@ -286,11 +286,11 @@
 }
 
 /* 隐藏 Chrome 的密码显示按钮 */
-input[type="password"]::-webkit-textfield-decoration-container {
+input[type='password']::-webkit-textfield-decoration-container {
   display: none !important;
 }
 
-input[type="password"]::-webkit-credentials-auto-fill-button {
+input[type='password']::-webkit-credentials-auto-fill-button {
   display: none !important;
 }
 
@@ -311,9 +311,9 @@ html[data-theme='light'] .favorite-add-button:hover {
 }
 
 /* 通用隐藏 */
-.favorite-form-container input[type="password"]::-ms-reveal,
-.favorite-form-container input[type="password"]::-ms-clear,
-.favorite-form-container input[type="text"]::-ms-reveal,
-.favorite-form-container input[type="text"]::-ms-clear {
+.favorite-form-container input[type='password']::-ms-reveal,
+.favorite-form-container input[type='password']::-ms-clear,
+.favorite-form-container input[type='text']::-ms-reveal,
+.favorite-form-container input[type='text']::-ms-clear {
   display: none !important;
 }

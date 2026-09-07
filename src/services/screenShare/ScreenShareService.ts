@@ -142,6 +142,12 @@ class ScreenShareService {
       }
       console.log('🖥️ [ScreenShareService] 开始捕获屏幕...');
 
+      if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+        throw new Error(
+          '当前系统的 WebView 不支持屏幕捕获，请升级系统后重试；仍可接收其他玩家的共享画面。'
+        );
+      }
+
       // 捕获屏幕
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
@@ -1518,9 +1524,15 @@ class ScreenShareService {
         (!Number.isInteger(offer.routeVersion) || Number(offer.routeVersion) <= 0)
       )
         return;
-      if (!isLegacyDirectOffer && (isNullish(expectedVersion) || expectedVersion !== Number(offer.routeVersion || 0))) {
+      if (
+        !isLegacyDirectOffer &&
+        (isNullish(expectedVersion) || expectedVersion !== Number(offer.routeVersion || 0))
+      ) {
         if (!isOwner && Number.isInteger(offer.routeVersion) && Number(offer.routeVersion) > 0) {
-          this.pendingRelayOffers.set(this.relayOfferKey(offer.shareId, offer.playerId, Number(offer.routeVersion)), offer);
+          this.pendingRelayOffers.set(
+            this.relayOfferKey(offer.shareId, offer.playerId, Number(offer.routeVersion)),
+            offer
+          );
         }
         return;
       }
@@ -1539,7 +1551,10 @@ class ScreenShareService {
 
       const sourceStream = isOwner ? this.localStream : this.remoteStreams.get(offer.shareId);
       if (!sourceStream || sourceStream.getVideoTracks().length === 0) {
-        this.pendingRelayOffers.set(this.relayOfferKey(offer.shareId, offer.playerId, offer.routeVersion), offer);
+        this.pendingRelayOffers.set(
+          this.relayOfferKey(offer.shareId, offer.playerId, offer.routeVersion),
+          offer
+        );
         return;
       }
 
@@ -1619,7 +1634,10 @@ class ScreenShareService {
         type: 'offer',
         sdp: offer.sdp,
       });
-      await this.flushPendingIce(this.iceKey(offer.shareId, 'out', offer.playerId, offer.routeVersion), pc);
+      await this.flushPendingIce(
+        this.iceKey(offer.shareId, 'out', offer.playerId, offer.routeVersion),
+        pc
+      );
 
       // 创建Answer
       const answer = await pc.createAnswer();
@@ -1877,7 +1895,12 @@ class ScreenShareService {
     }
   }
 
-  private iceKey(shareId: string, direction: 'in' | 'out', peerId: string, routeVersion?: number): string {
+  private iceKey(
+    shareId: string,
+    direction: 'in' | 'out',
+    peerId: string,
+    routeVersion?: number
+  ): string {
     return `${shareId}-${direction}-${peerId}-${isNullish(routeVersion) ? 'legacy' : routeVersion}`;
   }
 

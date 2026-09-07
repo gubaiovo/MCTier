@@ -5,10 +5,7 @@ interface BackIconProps {
   color?: string;
 }
 
-export const BackIcon: React.FC<BackIconProps> = ({ 
-  size = 24, 
-  color = 'currentColor' 
-}) => {
+export const BackIcon: React.FC<BackIconProps> = ({ size = 24, color = 'currentColor' }) => {
   return (
     <svg
       width={size}

@@ -42,7 +42,7 @@
 /* 允许输入框和文本区域选择文本 */
 input,
 textarea,
-[contenteditable="true"] {
+[contenteditable='true'] {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -232,10 +232,10 @@ html::after {
 }
 
 /* 隐藏所有可能的分辨率提示元素 */
-[class*="resize"],
-[class*="dimension"],
-[id*="resize"],
-[id*="dimension"] {
+[class*='resize'],
+[class*='dimension'],
+[id*='resize'],
+[id*='dimension'] {
   display: none !important;
 }
 /* ========================================
@@ -483,7 +483,9 @@ html[data-theme='light'] {
   --mct-hover: rgba(24, 32, 43, 0.055);
 }
 
-html[data-theme='light'] body { color: #18202b; }
+html[data-theme='light'] body {
+  color: #18202b;
+}
 
 html[data-theme='light'] .main-window,
 html[data-theme='light'] .lobby-form-container {
@@ -568,7 +570,9 @@ html[data-theme='light'] .settings-window {
   background: linear-gradient(150deg, #f7f9fb 0%, #edf1f5 100%);
 }
 
-html[data-theme='light'] .settings-bg-orb { display: none; }
+html[data-theme='light'] .settings-bg-orb {
+  display: none;
+}
 
 html[data-theme='light'] .settings-card,
 html[data-theme='light'] .mini-lobby-card,
@@ -679,11 +683,17 @@ html[data-theme='light'] .ant-input-password input {
   border-color: rgba(24, 32, 43, 0.18) !important;
 }
 
-html[data-theme='light'] .ant-input-password input::placeholder { color: #85909d !important; }
+html[data-theme='light'] .ant-input-password input::placeholder {
+  color: #85909d !important;
+}
 html[data-theme='light'] .ant-input-password-icon,
 html[data-theme='light'] .ant-select-arrow,
-html[data-theme='light'] .anticon { color: #596574; }
-html[data-theme='light'] .ant-input-password-icon:hover { color: #18202b !important; }
+html[data-theme='light'] .anticon {
+  color: #596574;
+}
+html[data-theme='light'] .ant-input-password-icon:hover {
+  color: #18202b !important;
+}
 
 html[data-theme='light'] .ant-input:-webkit-autofill,
 html[data-theme='light'] .ant-input-password input:-webkit-autofill {
@@ -698,10 +708,16 @@ html[data-theme='light'] .ant-dropdown-menu {
 }
 
 html[data-theme='light'] .ant-select-item,
-html[data-theme='light'] .ant-dropdown-menu-item { color: #18202b !important; }
+html[data-theme='light'] .ant-dropdown-menu-item {
+  color: #18202b !important;
+}
 html[data-theme='light'] .ant-select-item:hover,
-html[data-theme='light'] .ant-dropdown-menu-item:hover { background: #eef2f5 !important; }
-html[data-theme='light'] .ant-select-item-option-selected { background: rgba(82, 196, 26, 0.12) !important; }
+html[data-theme='light'] .ant-dropdown-menu-item:hover {
+  background: #eef2f5 !important;
+}
+html[data-theme='light'] .ant-select-item-option-selected {
+  background: rgba(82, 196, 26, 0.12) !important;
+}
 
 html[data-theme='light'] .ant-modal-content,
 html[data-theme='light'] .ant-modal-header,
@@ -723,13 +739,21 @@ html[data-theme='light'] .ant-empty-description,
 html[data-theme='light'] .version-update-modal .ant-modal-title,
 html[data-theme='light'] .update-log-title,
 html[data-theme='light'] .update-log-text,
-html[data-theme='light'] .ant-modal-body
-  :is(p, div, label, span):not(.ant-btn-icon):not(.anticon):not(:is(button, .ant-btn, .mct-on-dark) *) {
+html[data-theme='light']
+  .ant-modal-body
+  :is(p, div, label, span):not(.ant-btn-icon):not(.anticon):not(
+    :is(button, .ant-btn, .mct-on-dark) *
+  ) {
   color: #18202b !important;
 }
 html[data-theme='light'] .ant-modal-close,
-html[data-theme='light'] .version-update-modal .ant-modal-close { color: #596574; }
-html[data-theme='light'] .ant-modal-close:hover { background: #eef2f5; color: #18202b; }
+html[data-theme='light'] .version-update-modal .ant-modal-close {
+  color: #596574;
+}
+html[data-theme='light'] .ant-modal-close:hover {
+  background: #eef2f5;
+  color: #18202b;
+}
 
 html[data-theme='light'] .version-info-section,
 html[data-theme='light'] .update-log-item:hover {
@@ -753,9 +777,15 @@ html[data-theme='light'] .ant-btn-default:not(.ant-btn-dangerous):not(:disabled)
   border-color: #52c41a !important;
 }
 
-html[data-theme='light'] .ant-switch:not(.ant-switch-checked) { background: #aab2bd; }
-html[data-theme='light'] .ant-slider-rail { background: #d7dce2 !important; }
-html[data-theme='light'] .ant-slider-track { background: #52c41a !important; }
+html[data-theme='light'] .ant-switch:not(.ant-switch-checked) {
+  background: #aab2bd;
+}
+html[data-theme='light'] .ant-slider-rail {
+  background: #d7dce2 !important;
+}
+html[data-theme='light'] .ant-slider-track {
+  background: #52c41a !important;
+}
 
 html[data-theme='light'] input[type='range'] {
   background-color: #d7dce2;
@@ -904,7 +934,8 @@ html[data-theme='light'] .reconnect-modal .ant-modal-body {
   color: var(--mct-text) !important;
 }
 
-html[data-theme='light'] :where(p, div, span, label)[style*='color: rgba(255']:not(:is(button, .ant-btn, .mct-on-dark) *) {
+html[data-theme='light']
+  :where(p, div, span, label)[style*='color: rgba(255']:not(:is(button, .ant-btn, .mct-on-dark) *) {
   color: var(--mct-text-secondary) !important;
 }
 
@@ -992,7 +1023,9 @@ html[data-theme='light'] .mct-on-dark svg[stroke='white'] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
@@ -1003,7 +1036,10 @@ html[data-theme='light'] .mct-on-dark svg[stroke='white'] {
 /* 聊天室的亮色样式全部由 ChatRoom.css 单独负责，此处不再重复覆盖，避免绿色气泡被压成黑字。 */
 
 html[data-theme='light'] .ant-message-notice-content,
-html[data-theme='light'] .ant-notification-notice { color: #18202b; background: #ffffff; }
+html[data-theme='light'] .ant-notification-notice {
+  color: #18202b;
+  background: #ffffff;
+}
 
 html[data-theme='light'] .ant-tooltip .ant-tooltip-inner {
   background: #ffffff !important;
@@ -1012,7 +1048,9 @@ html[data-theme='light'] .ant-tooltip .ant-tooltip-inner {
   box-shadow: 0 6px 20px rgba(20, 30, 42, 0.18) !important;
 }
 html[data-theme='light'] .ant-tooltip .ant-tooltip-arrow::before,
-html[data-theme='light'] .ant-tooltip .ant-tooltip-arrow::after { background: #ffffff !important; }
+html[data-theme='light'] .ant-tooltip .ant-tooltip-arrow::after {
+  background: #ffffff !important;
+}
 
 /* Component-level light theme fallbacks for legacy dark-first styles. Keep primary
    and destructive buttons white-on-color, while all neutral surfaces use dark text. */
@@ -1039,7 +1077,10 @@ html[data-theme='light'] .settings-window p,
 html[data-theme='light'] .settings-window span {
   text-shadow: none !important;
 }
-html[data-theme='light'] :is(.settings-window, .lobby-settings-modal) .snd-block .danmaku-preview-bullet:not(.rainbow) {
+html[data-theme='light']
+  :is(.settings-window, .lobby-settings-modal)
+  .snd-block
+  .danmaku-preview-bullet:not(.rainbow) {
   color: var(--danmaku-preview-color) !important;
 }
 html[data-theme='light'] .settings-title-text,
@@ -1121,7 +1162,9 @@ html[data-theme='light'] .mct-node-select.is-open .mct-node-select-trigger {
   border-color: rgba(82, 196, 26, 0.55);
 }
 
-html[data-theme='light'] .mct-node-select-chevron { color: #596574; }
+html[data-theme='light'] .mct-node-select-chevron {
+  color: #596574;
+}
 
 html[data-theme='light'] .mct-node-select-menu {
   background: rgba(255, 255, 255, 0.99);
@@ -1129,7 +1172,9 @@ html[data-theme='light'] .mct-node-select-menu {
   box-shadow: 0 14px 34px rgba(20, 30, 42, 0.18);
 }
 
-html[data-theme='light'] .mct-node-select-option { color: #364151; }
+html[data-theme='light'] .mct-node-select-option {
+  color: #364151;
+}
 html[data-theme='light'] .mct-node-select-option.is-active,
 html[data-theme='light'] .mct-node-select-option:hover {
   color: #18202b;
@@ -1140,8 +1185,12 @@ html[data-theme='light'] .mct-node-select-option.is-selected {
   background: #e5f3dc;
 }
 html[data-theme='light'] .mct-node-select-option.is-selected.is-active,
-html[data-theme='light'] .mct-node-select-option.is-selected:hover { background: #dcedd1; }
-html[data-theme='light'] .mct-node-select-check { color: #3f8f19; }
+html[data-theme='light'] .mct-node-select-option.is-selected:hover {
+  background: #dcedd1;
+}
+html[data-theme='light'] .mct-node-select-check {
+  color: #3f8f19;
+}
 html[data-theme='light'] .lobby-form .ant-input::placeholder,
 html[data-theme='light'] .lobby-form .ant-input-password input::placeholder {
   color: #85909d !important;
@@ -1163,16 +1212,20 @@ html[data-theme='light'] .lobby-action-btn svg {
 }
 
 /* Inline legacy white text in neutral light surfaces. 深底控件内部一律豁免。 */
-html[data-theme='light'] :where(.ant-modal, .ant-drawer, .settings-window, .lobby-form-container, .screen-share-manager)
+html[data-theme='light']
+  :where(.ant-modal, .ant-drawer, .settings-window, .lobby-form-container, .screen-share-manager)
   [style*='color: rgba(255']:not(:is(button, .ant-btn, .mct-on-dark) *) {
   color: #596574 !important;
 }
-html[data-theme='light'] :where(.ant-modal, .ant-drawer, .settings-window, .lobby-form-container, .screen-share-manager)
+html[data-theme='light']
+  :where(.ant-modal, .ant-drawer, .settings-window, .lobby-form-container, .screen-share-manager)
   :is(svg[stroke='#fff'], svg[stroke='white']):not(:is(button, .ant-btn, .mct-on-dark) *) {
   stroke: #596574 !important;
 }
-html[data-theme='light'] .settings-window
-  button:not(.ant-btn-primary):not(.settings-btn-save):not(.mct-on-dark):not(.snd-icon-btn) svg,
+html[data-theme='light']
+  .settings-window
+  button:not(.ant-btn-primary):not(.settings-btn-save):not(.mct-on-dark):not(.snd-icon-btn)
+  svg,
 html[data-theme='light'] .lobby-form-container .lobby-action-btn svg,
 html[data-theme='light'] .screen-share-manager .empty-state svg,
 html[data-theme='light'] .screen-share-manager .screen-share-hint svg,
@@ -1180,7 +1233,8 @@ html[data-theme='light'] .ant-modal:not(.ant-modal-confirm) .ant-modal-body > sv
   color: #596574 !important;
   stroke: #596574;
 }
-html[data-theme='light'] :is(.settings-window, .lobby-form-container, .screen-share-manager)
+html[data-theme='light']
+  :is(.settings-window, .lobby-form-container, .screen-share-manager)
   .anticon:not(:is(button, .ant-btn, .mct-on-dark) *) {
   color: #596574 !important;
 }
@@ -1233,11 +1287,27 @@ html[data-theme='light'] .favorite-lobby-modal,
 html[data-theme='light'] .version-update-modal {
   color: #18202b;
 }
-html[data-theme='light'] .lobby-advanced-config-modal :where(h1, h2, h3, p, label, span, .ant-form-item-label > label):not(:is(button, .ant-btn, .mct-on-dark) *),
-html[data-theme='light'] .lobby-settings-modal :where(h1, h2, h3, p, label, span, .ant-form-item-label > label):not(:is(button, .ant-btn, .mct-on-dark) *),
-html[data-theme='light'] .exit-node-advanced-modal :where(h1, h2, h3, p, label, span, .ant-form-item-label > label):not(:is(button, .ant-btn, .mct-on-dark) *),
-html[data-theme='light'] .favorite-lobby-modal :where(h1, h2, h3, p, label, span):not(:is(button, .ant-btn, .mct-on-dark) *),
-html[data-theme='light'] .version-update-modal :where(h1, h2, h3, p, label, span):not(:is(button, .ant-btn, .mct-on-dark) *) {
+html[data-theme='light']
+  .lobby-advanced-config-modal
+  :where(h1, h2, h3, p, label, span, .ant-form-item-label > label):not(
+    :is(button, .ant-btn, .mct-on-dark) *
+  ),
+html[data-theme='light']
+  .lobby-settings-modal
+  :where(h1, h2, h3, p, label, span, .ant-form-item-label > label):not(
+    :is(button, .ant-btn, .mct-on-dark) *
+  ),
+html[data-theme='light']
+  .exit-node-advanced-modal
+  :where(h1, h2, h3, p, label, span, .ant-form-item-label > label):not(
+    :is(button, .ant-btn, .mct-on-dark) *
+  ),
+html[data-theme='light']
+  .favorite-lobby-modal
+  :where(h1, h2, h3, p, label, span):not(:is(button, .ant-btn, .mct-on-dark) *),
+html[data-theme='light']
+  .version-update-modal
+  :where(h1, h2, h3, p, label, span):not(:is(button, .ant-btn, .mct-on-dark) *) {
   color: #18202b;
   text-shadow: none !important;
 }
@@ -1263,7 +1333,9 @@ html[data-theme='light'] .voice-controls .voice-control-button:not(.ant-btn-prim
   transition: none !important;
 }
 
-.ant-switch:hover:not(.ant-switch-disabled) { box-shadow: none !important; }
+.ant-switch:hover:not(.ant-switch-disabled) {
+  box-shadow: none !important;
+}
 
 html[data-theme='light'] .ant-switch:not(.ant-switch-checked),
 html[data-theme='light'] .ant-switch:not(.ant-switch-checked):hover:not(.ant-switch-disabled) {
@@ -1275,8 +1347,25 @@ html[data-theme='light'] .ant-switch.ant-switch-checked:hover:not(.ant-switch-di
   background: #52c41a !important;
 }
 
-html[data-theme='light'] :is(.ant-btn-primary, .start-share-btn, .stop-share-btn, .quick-rejoin-btn, .create-button, .add-button),
-html[data-theme='light'] :is(.ant-btn-primary, .start-share-btn, .stop-share-btn, .quick-rejoin-btn, .create-button, .add-button) :is(span, svg, .anticon) {
+html[data-theme='light']
+  :is(
+    .ant-btn-primary,
+    .start-share-btn,
+    .stop-share-btn,
+    .quick-rejoin-btn,
+    .create-button,
+    .add-button
+  ),
+html[data-theme='light']
+  :is(
+    .ant-btn-primary,
+    .start-share-btn,
+    .stop-share-btn,
+    .quick-rejoin-btn,
+    .create-button,
+    .add-button
+  )
+  :is(span, svg, .anticon) {
   color: #ffffff !important;
 }
 
@@ -1299,15 +1388,24 @@ html[data-theme='light'] .recent-manager-modal .recent-player-item {
   border-color: rgba(24, 32, 43, 0.16) !important;
 }
 
-html[data-theme='light'] .recent-manager-modal .recent-item-meta { color: #596574 !important; }
+html[data-theme='light'] .recent-manager-modal .recent-item-meta {
+  color: #596574 !important;
+}
 
-html[data-theme='light'] .recent-manager-modal .ant-modal-footer .ant-btn-dangerous:not(.ant-btn-primary) {
+html[data-theme='light']
+  .recent-manager-modal
+  .ant-modal-footer
+  .ant-btn-dangerous:not(.ant-btn-primary) {
   background: #ffffff !important;
   border-color: #e5484d !important;
   color: #c7353a !important;
 }
 
-html[data-theme='light'] .recent-manager-modal .ant-modal-footer .ant-btn-dangerous:not(.ant-btn-primary) span {
+html[data-theme='light']
+  .recent-manager-modal
+  .ant-modal-footer
+  .ant-btn-dangerous:not(.ant-btn-primary)
+  span {
   color: #c7353a !important;
 }
 
@@ -1325,7 +1423,9 @@ html[data-theme='light'] .recent-manager-modal .recent-danger-button:hover span 
   color: #a8282e !important;
 }
 
-html[data-theme='light'] .recent-manager-modal .ant-modal-close { color: #596574 !important; }
+html[data-theme='light'] .recent-manager-modal .ant-modal-close {
+  color: #596574 !important;
+}
 
 html[data-theme='light'] .file-share-container :is(.file-share-title, .ant-typography, h1, h2, h3) {
   color: #18202b !important;
@@ -1339,7 +1439,9 @@ html[data-theme='light'] .screen-viewer .close-viewer-btn svg {
   stroke: #ffffff !important;
 }
 
-html[data-theme='light'] .screen-share-view :is(.screen-share-list, .share-item-content, .share-player-details, .share-badges) {
+html[data-theme='light']
+  .screen-share-view
+  :is(.screen-share-list, .share-item-content, .share-player-details, .share-badges) {
   color: #18202b;
 }
 
@@ -1353,36 +1455,52 @@ html[data-theme='light'] .screen-share-view .empty-hint {
 }
 
 /* The selected danmaku color is user content, not neutral theme text. */
-html[data-theme='light'] .lobby-settings-modal .snd-manager .snd-block .danmaku-preview-bullet:not(.rainbow),
-html[data-theme='light'] .settings-window .snd-manager .snd-block .danmaku-preview-bullet:not(.rainbow) {
+html[data-theme='light']
+  .lobby-settings-modal
+  .snd-manager
+  .snd-block
+  .danmaku-preview-bullet:not(.rainbow),
+html[data-theme='light']
+  .settings-window
+  .snd-manager
+  .snd-block
+  .danmaku-preview-bullet:not(.rainbow) {
   color: var(--danmaku-preview-color) !important;
   -webkit-text-fill-color: var(--danmaku-preview-color) !important;
 }
 
-html[data-theme='light'] :is(
-  .ant-btn-primary:not(.ant-btn-dangerous),
-  .create-button,
-  .add-button,
-  .start-share-btn,
-  .settings-btn-save,
-  .node-btn-save,
-  .settings-action-btn-green,
-  .lobby-settings-btn-save,
-  .global-advanced-config-save-btn,
-  .exit-node-advanced-btn-save,
-  .quick-rejoin-btn
-) {
+html[data-theme='light']
+  :is(
+    .ant-btn-primary:not(.ant-btn-dangerous),
+    .create-button,
+    .add-button,
+    .start-share-btn,
+    .settings-btn-save,
+    .node-btn-save,
+    .settings-action-btn-green,
+    .lobby-settings-btn-save,
+    .global-advanced-config-save-btn,
+    .exit-node-advanced-btn-save,
+    .quick-rejoin-btn
+  ) {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   filter: none;
   transform: none !important;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease !important;
 }
 
 html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button),
-html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):hover:not(:disabled),
-html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):focus-visible:not(:disabled),
-html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):active:not(:disabled) {
+html[data-theme='light']
+  .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):hover:not(:disabled),
+html[data-theme='light']
+  .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):focus-visible:not(:disabled),
+html[data-theme='light']
+  .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):active:not(:disabled) {
   background-image: none !important;
   border-color: #4b941e !important;
   color: #ffffff !important;
@@ -1392,13 +1510,16 @@ html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choic
   background-color: #4b941e !important;
 }
 
-html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):hover:not(:disabled),
-html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):focus-visible:not(:disabled) {
+html[data-theme='light']
+  .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):hover:not(:disabled),
+html[data-theme='light']
+  .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):focus-visible:not(:disabled) {
   background-color: #3f8118 !important;
   border-color: #3f8118 !important;
 }
 
-html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):active:not(:disabled) {
+html[data-theme='light']
+  .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choice-button):active:not(:disabled) {
   background-color: #367313 !important;
   border-color: #367313 !important;
 }
@@ -1414,82 +1535,88 @@ html[data-theme='light'] .ant-btn-primary:not(.ant-btn-dangerous):not(.mct-choic
    确认弹窗按钮、静音、表情、发送等）。
    深色主题保持原有动效不变。
    ============================================================ */
-html[data-theme='light'] :is(
-  .transfer-cancel-btn,
-  .delete-share-btn,
-  .confirm-btn,
-  .cancel-btn,
-  .delete-btn,
-  .status-icon,
-  .player-mute-button,
-  .emoji-button,
-  .image-button,
-  .send-button,
-  .image-download-btn,
-  .new-message-indicator,
-  .remove-rule-btn,
-  .add-rule-btn,
-  .exit-node-advanced-btn-save,
-  .lobby-settings-btn-reset,
-  .lobby-settings-btn-save,
-  .advanced-config-btn,
-  .lobby-advanced-config-btn-save,
-  .global-advanced-config-save-btn,
-  .config-btn-export,
-  .config-btn-import,
-  .stop-viewing-btn,
-  .retry-btn,
-  .back-button,
-  .url-copy-btn,
-  .status-window-header-button,
-  .sponsor-button,
-  .onboarding-entry-button,
-  .helper-button.primary,
-  .version-update-btn.download,
-  .version-error-btn.primary,
-  .voice-control-button.mic-button,
-  .voice-control-button.mute-button
-) {
+html[data-theme='light']
+  :is(
+    .transfer-cancel-btn,
+    .delete-share-btn,
+    .confirm-btn,
+    .cancel-btn,
+    .delete-btn,
+    .status-icon,
+    .player-mute-button,
+    .emoji-button,
+    .image-button,
+    .send-button,
+    .image-download-btn,
+    .new-message-indicator,
+    .remove-rule-btn,
+    .add-rule-btn,
+    .exit-node-advanced-btn-save,
+    .lobby-settings-btn-reset,
+    .lobby-settings-btn-save,
+    .advanced-config-btn,
+    .lobby-advanced-config-btn-save,
+    .global-advanced-config-save-btn,
+    .config-btn-export,
+    .config-btn-import,
+    .stop-viewing-btn,
+    .retry-btn,
+    .back-button,
+    .url-copy-btn,
+    .status-window-header-button,
+    .sponsor-button,
+    .onboarding-entry-button,
+    .helper-button.primary,
+    .version-update-btn.download,
+    .version-error-btn.primary,
+    .voice-control-button.mic-button,
+    .voice-control-button.mute-button
+  ) {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease !important;
 }
 
-html[data-theme='light'] :is(
-  .transfer-cancel-btn,
-  .delete-share-btn,
-  .confirm-btn,
-  .cancel-btn,
-  .delete-btn,
-  .status-icon,
-  .player-mute-button,
-  .emoji-button,
-  .image-button,
-  .send-button,
-  .image-download-btn,
-  .new-message-indicator,
-  .remove-rule-btn,
-  .add-rule-btn,
-  .exit-node-advanced-btn-save,
-  .lobby-settings-btn-reset,
-  .lobby-settings-btn-save,
-  .advanced-config-btn,
-  .lobby-advanced-config-btn-save,
-  .global-advanced-config-save-btn,
-  .config-btn-export,
-  .config-btn-import,
-  .stop-viewing-btn,
-  .retry-btn,
-  .back-button,
-  .url-copy-btn,
-  .status-window-header-button,
-  .sponsor-button,
-  .onboarding-entry-button,
-  .helper-button.primary,
-  .version-update-btn.download,
-  .version-error-btn.primary,
-  .voice-control-button.mic-button,
-  .voice-control-button.mute-button
-):is(:hover, :focus-visible, :active) {
+html[data-theme='light']
+  :is(
+    .transfer-cancel-btn,
+    .delete-share-btn,
+    .confirm-btn,
+    .cancel-btn,
+    .delete-btn,
+    .status-icon,
+    .player-mute-button,
+    .emoji-button,
+    .image-button,
+    .send-button,
+    .image-download-btn,
+    .new-message-indicator,
+    .remove-rule-btn,
+    .add-rule-btn,
+    .exit-node-advanced-btn-save,
+    .lobby-settings-btn-reset,
+    .lobby-settings-btn-save,
+    .advanced-config-btn,
+    .lobby-advanced-config-btn-save,
+    .global-advanced-config-save-btn,
+    .config-btn-export,
+    .config-btn-import,
+    .stop-viewing-btn,
+    .retry-btn,
+    .back-button,
+    .url-copy-btn,
+    .status-window-header-button,
+    .sponsor-button,
+    .onboarding-entry-button,
+    .helper-button.primary,
+    .version-update-btn.download,
+    .version-error-btn.primary,
+    .voice-control-button.mic-button,
+    .voice-control-button.mute-button
+  ):is(:hover, :focus-visible, :active) {
   transform: none !important;
 }

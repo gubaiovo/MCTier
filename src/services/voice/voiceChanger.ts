@@ -30,7 +30,12 @@ function createFadeBuffer(ctx: AudioContext, activeTime: number, fadeTime: numbe
   return buffer;
 }
 
-function createDelayTimeBuffer(ctx: AudioContext, activeTime: number, fadeTime: number, shiftUp: boolean): AudioBuffer {
+function createDelayTimeBuffer(
+  ctx: AudioContext,
+  activeTime: number,
+  fadeTime: number,
+  shiftUp: boolean
+): AudioBuffer {
   const length1 = activeTime * ctx.sampleRate;
   const length2 = (activeTime - 2 * fadeTime) * ctx.sampleRate;
   const length = length1 + length2;
@@ -71,7 +76,10 @@ class Jungle {
     mod2.buffer = shiftDownBuffer;
     mod3.buffer = shiftUpBuffer;
     mod4.buffer = shiftUpBuffer;
-    mod1.loop = true; mod2.loop = true; mod3.loop = true; mod4.loop = true;
+    mod1.loop = true;
+    mod2.loop = true;
+    mod3.loop = true;
+    mod4.loop = true;
 
     this.mod1Gain = ctx.createGain();
     this.mod2Gain = ctx.createGain();
@@ -101,7 +109,8 @@ class Jungle {
     const fadeBuffer = createFadeBuffer(ctx, BUFFER_TIME, FADE_TIME);
     fade1.buffer = fadeBuffer;
     fade2.buffer = fadeBuffer;
-    fade1.loop = true; fade2.loop = true;
+    fade1.loop = true;
+    fade2.loop = true;
 
     const mix1 = ctx.createGain();
     const mix2 = ctx.createGain();
@@ -119,8 +128,12 @@ class Jungle {
 
     const t = ctx.currentTime + 0.05;
     const t2 = t + BUFFER_TIME - FADE_TIME;
-    mod1.start(t); mod2.start(t2); mod3.start(t); mod4.start(t2);
-    fade1.start(t); fade2.start(t2);
+    mod1.start(t);
+    mod2.start(t2);
+    mod3.start(t);
+    mod4.start(t2);
+    fade1.start(t);
+    fade2.start(t2);
     this.sources = [mod1, mod2, mod3, mod4, fade1, fade2];
   }
 
@@ -146,15 +159,36 @@ class Jungle {
   }
 
   stop(): void {
-    this.sources.forEach((s) => { try { s.stop(); } catch { /* ignore */ } });
-    try { this.input.disconnect(); } catch { /* ignore */ }
-    try { this.output.disconnect(); } catch { /* ignore */ }
+    this.sources.forEach((s) => {
+      try {
+        s.stop();
+      } catch {
+        /* ignore */
+      }
+    });
+    try {
+      this.input.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
+      this.output.disconnect();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 // ===== 音色预设 =====
 export type VoicePreset =
-  | 'none' | 'uncle' | 'male' | 'female' | 'loli' | 'chipmunk' | 'robot' | 'telephone';
+  | 'none'
+  | 'uncle'
+  | 'male'
+  | 'female'
+  | 'loli'
+  | 'chipmunk'
+  | 'robot'
+  | 'telephone';
 
 /** 各预设的变调半音数 */
 const PRESET_SEMITONES: Record<VoicePreset, number> = {
@@ -212,11 +246,44 @@ export class VoiceChanger {
   }
 
   private teardownEffects(): void {
-    if (this.jungle) { this.jungle.stop(); this.jungle = null; }
-    if (this.ringOsc) { try { this.ringOsc.stop(); } catch { /* ignore */ } try { this.ringOsc.disconnect(); } catch { /* ignore */ } this.ringOsc = null; }
-    if (this.ringGain) { try { this.ringGain.disconnect(); } catch { /* ignore */ } this.ringGain = null; }
-    if (this.bandpass) { try { this.bandpass.disconnect(); } catch { /* ignore */ } this.bandpass = null; }
-    try { this.inputGain?.disconnect(); } catch { /* ignore */ }
+    if (this.jungle) {
+      this.jungle.stop();
+      this.jungle = null;
+    }
+    if (this.ringOsc) {
+      try {
+        this.ringOsc.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        this.ringOsc.disconnect();
+      } catch {
+        /* ignore */
+      }
+      this.ringOsc = null;
+    }
+    if (this.ringGain) {
+      try {
+        this.ringGain.disconnect();
+      } catch {
+        /* ignore */
+      }
+      this.ringGain = null;
+    }
+    if (this.bandpass) {
+      try {
+        this.bandpass.disconnect();
+      } catch {
+        /* ignore */
+      }
+      this.bandpass = null;
+    }
+    try {
+      this.inputGain?.disconnect();
+    } catch {
+      /* ignore */
+    }
   }
 
   private buildChain(preset: VoicePreset): void {
@@ -268,9 +335,23 @@ export class VoiceChanger {
 
   private disposeGraphOnly(): void {
     this.teardownEffects();
-    try { this.source?.disconnect(); } catch { /* ignore */ }
-    try { this.outputGain?.disconnect(); } catch { /* ignore */ }
-    if (this.ctx) { try { void this.ctx.close(); } catch { /* ignore */ } }
+    try {
+      this.source?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
+      this.outputGain?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    if (this.ctx) {
+      try {
+        void this.ctx.close();
+      } catch {
+        /* ignore */
+      }
+    }
     this.ctx = null;
     this.source = null;
     this.inputGain = null;

@@ -333,6 +333,10 @@ fn ensure_existing_path_has_no_links(path: &std::path::Path) -> Result<(), Strin
         let metadata = std::fs::symlink_metadata(&current)
             .map_err(|e| format!("检查路径失败 {}: {}", current.display(), e))?;
         if is_symlink_or_reparse_point(&metadata) {
+            #[cfg(target_os = "macos")]
+            if crate::modules::macos_platform::is_system_directory_alias(&current, &metadata) {
+                continue;
+            }
             return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
         }
     }
@@ -460,6 +464,7 @@ pub struct AppState {
 /// * `Ok(Lobby)` - 成功创建的大厅信息
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_lobby(
     name: String,
     password: String,
@@ -519,7 +524,7 @@ pub async fn create_lobby(
             server_node,
             signaling_server.clone(),
             use_domain.unwrap_or(false),
-            &*network_svc,
+            &network_svc,
             &app_handle,
             global_config,
             lobby_config,
@@ -543,8 +548,7 @@ pub async fn create_lobby(
 
             log::info!("使用前端提供的玩家ID: {}", player_id);
 
-            // 所有客户端都连接到官方 WebSockets 信令服务器 (wss://test.pmhs.top)
-            log::info!("客户端将连接到官方 WebSockets 信令服务器: wss://test.pmhs.top");
+            log::info!("客户端将连接到 WebSocket 信令服务器: {}", signaling_server);
 
             // 不再在创建大厅时自动启动HTTP文件服务器
             // HTTP服务器将在第一次添加共享时按需启动
@@ -593,6 +597,7 @@ pub async fn create_lobby(
 /// * `Ok(Lobby)` - 成功加入的大厅信息
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn join_lobby(
     name: String,
     password: String,
@@ -654,7 +659,7 @@ pub async fn join_lobby(
             server_node,
             signaling_server.clone(),
             use_domain.unwrap_or(false),
-            &*network_svc,
+            &network_svc,
             &app_handle,
             global_config,
             lobby_config,
@@ -679,8 +684,7 @@ pub async fn join_lobby(
 
             log::info!("使用前端提供的玩家ID: {}", player_id);
 
-            // 所有客户端都连接到官方 WebSockets 信令服务器 (wss://test.pmhs.top)
-            log::info!("客户端将连接到官方 WebSockets 信令服务器: wss://test.pmhs.top");
+            log::info!("客户端将连接到 WebSocket 信令服务器: {}", signaling_server);
 
             // 启动P2P信令服务
             log::info!("正在启动P2P信令服务（加入大厅）...");
@@ -789,7 +793,7 @@ pub async fn leave_lobby(state: State<'_, AppState>) -> Result<(), String> {
     let mut lobby_mgr = lobby_manager.lock().await;
     let network_svc = network_service.lock().await;
 
-    match lobby_mgr.leave_lobby(&*network_svc).await {
+    match lobby_mgr.leave_lobby(&network_svc).await {
         Ok(_) => {
             log::info!("成功退出大厅");
             drop(lobby_mgr);
@@ -1279,7 +1283,7 @@ pub async fn exit_app(state: State<'_, AppState>, app: tauri::AppHandle) -> Resu
         // 退出大厅
         let mut lobby_mgr = lobby_manager.lock().await;
         let network_svc = network_service.lock().await;
-        if let Err(e) = lobby_mgr.leave_lobby(&*network_svc).await {
+        if let Err(e) = lobby_mgr.leave_lobby(&network_svc).await {
             log::warn!("退出大厅时发生错误: {}", e);
         }
     }
@@ -1525,7 +1529,7 @@ pub async fn toggle_mini_mode(mini_mode: bool, window: tauri::Window) -> Result<
 /// * `Err(String)` - 错误信息
 #[tauri::command]
 pub async fn set_window_opacity(opacity: f64, window: tauri::Window) -> Result<(), String> {
-    let clamped_opacity = opacity.max(0.3).min(1.0);
+    let clamped_opacity = opacity.clamp(0.3, 1.0);
 
     // 注意：不再使用 WS_EX_LAYERED + SetLayeredWindowAttributes(LWA_ALPHA)。
     // 该方式会用“整窗统一 alpha”覆盖 Tauri 的逐像素真透明（transparent:true），
@@ -1741,7 +1745,10 @@ pub async fn cancel_lobby_connecting() -> Result<(), String> {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    crate::modules::macos_platform::stop_tunnel().await;
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let pkill = unix_system_command("pkill")?;
         let _ = tokio::process::Command::new(pkill)
@@ -1788,6 +1795,29 @@ pub async fn check_virtual_adapter() -> Result<bool, String> {
         log::info!("虚拟网卡检查结果: {}", has_adapter);
         Ok(has_adapter)
     }
+    #[cfg(target_os = "macos")]
+    {
+        // EasyTier 在 macOS 上使用系统分配的 utunN 接口。只把带有 IPv4
+        // 地址的 utun 视为已创建，避免把其它没有地址的系统 utun 误判为
+        // MCTier 已就绪。
+        let output = std::process::Command::new("/sbin/ifconfig")
+            .output()
+            .map_err(|e| format!("执行 ifconfig 失败: {}", e))?;
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let mut in_utun = false;
+        let has_adapter = output_str.lines().any(|line| {
+            if !line.starts_with(' ') && !line.starts_with('\t') {
+                in_utun = line
+                    .split(':')
+                    .next()
+                    .map(|name| name.starts_with("utun"))
+                    .unwrap_or(false);
+            }
+            in_utun && line.trim_start().starts_with("inet ")
+        });
+        log::info!("macOS utun 虚拟网卡检查结果: {}", has_adapter);
+        Ok(has_adapter)
+    }
 
     // Linux：扫描 /sys/class/net 找 EasyTier 建的 TUN 网卡。语义与 Windows 解析
     // ipconfig 一致 —— 网卡只在组网期间存在，未组网时返回 false 属正常。
@@ -1798,7 +1828,7 @@ pub async fn check_virtual_adapter() -> Result<bool, String> {
         Ok(has_adapter)
     }
 
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         // 其余平台尚未适配虚拟网卡检测，返回 true 避免阻断流程
         Ok(true)
@@ -1820,22 +1850,22 @@ pub async fn check_firewall_rules() -> Result<bool, String> {
         #[cfg(debug_assertions)]
         {
             log::info!("🔧 开发模式 - 跳过防火墙规则检查");
-            return Ok(true);
+            Ok(true)
         }
 
         // 生产模式：通过 privileged helper 检查
         #[cfg(not(debug_assertions))]
         {
-        let has_rules = crate::modules::privileged_helper::run_one_shot(
-            crate::modules::privileged_helper::HelperRequest::CheckFirewall,
-        )?
-        .and_then(|value| value.parse::<bool>().ok())
-        .unwrap_or(false);
+            let has_rules = crate::modules::privileged_helper::run_one_shot(
+                crate::modules::privileged_helper::HelperRequest::CheckFirewall,
+            )?
+            .and_then(|value| value.parse::<bool>().ok())
+            .unwrap_or(false);
 
-        log::info!("防火墙规则检查结果: {}", has_rules);
-        Ok(has_rules)
-    }
+            log::info!("防火墙规则检查结果: {}", has_rules);
+            Ok(has_rules)
         }
+    }
 
     #[cfg(target_os = "linux")]
     {
@@ -1877,7 +1907,11 @@ pub async fn is_admin() -> bool {
             ok.is_ok() && elevation.TokenIsElevated != 0
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        crate::modules::macos_platform::has_authorization().await
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         true
     }
@@ -1894,23 +1928,24 @@ pub async fn add_firewall_rules(app_handle: tauri::AppHandle) -> Result<String, 
         #[cfg(debug_assertions)]
         {
             log::info!("🔧 开发模式 - 跳过防火墙规则添加");
-            return Ok("开发模式：已跳过防火墙配置".to_string());
+            let _ = app_handle;
+            Ok("开发模式：已跳过防火墙配置".to_string())
         }
 
         // 生产模式：通过 privileged helper 添加规则
         #[cfg(not(debug_assertions))]
         {
-        let easytier_path =
-            crate::modules::resource_manager::ResourceManager::get_easytier_path(&app_handle)
-                .map_err(|e| e.to_string())?;
-        let value = crate::modules::privileged_helper::run_one_shot(
-            crate::modules::privileged_helper::HelperRequest::AddFirewall {
-                easytier_path: easytier_path.to_string_lossy().into_owned(),
-            },
-        )?;
-        Ok(value.unwrap_or_else(|| "防火墙规则已更新".to_string()))
-    }
+            let easytier_path =
+                crate::modules::resource_manager::ResourceManager::get_easytier_path(&app_handle)
+                    .map_err(|e| e.to_string())?;
+            let value = crate::modules::privileged_helper::run_one_shot(
+                crate::modules::privileged_helper::HelperRequest::AddFirewall {
+                    easytier_path: easytier_path.to_string_lossy().into_owned(),
+                },
+            )?;
+            Ok(value.unwrap_or_else(|| "防火墙规则已更新".to_string()))
         }
+    }
     #[cfg(target_os = "linux")]
     {
         let _ = app_handle;
@@ -1932,6 +1967,13 @@ pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String
         let _ = app_handle;
         Err("MCTier 主程序以普通权限运行，特权操作会单独请求 UAC".to_string())
     }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app_handle;
+        crate::modules::macos_platform::ensure_authorized()
+            .await
+            .map_err(|e| e.to_string())
+    }
     // Linux 没有"以管理员重启整个应用"这一步 —— 应用本体本来就不需要 root。
     // 前端这条"一键修复"在 Linux 上真正要做的是给 EasyTier 补 TUN 文件能力，
     // 所以这里复用同一入口，成功后不重启进程。
@@ -1942,7 +1984,7 @@ pub async fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String
         Ok(())
     }
 
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         let _ = app_handle;
         Err("当前平台不支持".to_string())
@@ -1980,7 +2022,13 @@ pub async fn ping_virtual_ip(ip: String) -> Result<bool, String> {
             .map_err(|e| format!("执行 ping 失败: {}", e))?
     };
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    let output = Command::new("/sbin/ping")
+        .args(["-c", "2", "-W", "1000", &target])
+        .output()
+        .map_err(|e| format!("执行 ping 失败: {}", e))?;
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     let output = Command::new(unix_system_command("ping")?)
         .args(["-c", "2", "-W", "1", &target])
         .output()
@@ -3466,6 +3514,7 @@ async fn commit_download_part_noreplace(
 /// - 通过 `download-progress` 事件上报进度（taskId/downloaded/total）
 /// - 支持通过 `cancel_remote_download` 取消
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn download_remote_file(
     task_id: String,
     peer_ip: String,
@@ -3672,6 +3721,7 @@ pub fn cancel_remote_download(task_id: String) {
 
 /// 流式批量打包下载：POST file_paths 到对端 batch-download，边收边写盘到 save_path
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn download_remote_batch(
     task_id: String,
     peer_ip: String,
@@ -3960,7 +4010,7 @@ pub async fn detect_security_software() -> Vec<String> {
         ];
 
         let output = tokio::process::Command::new(windows_system_command("tasklist.exe"))
-            .args(&["/fo", "csv", "/nh"])
+            .args(["/fo", "csv", "/nh"])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .await;
@@ -4180,7 +4230,7 @@ fn is_symlink_or_reparse_point(metadata: &std::fs::Metadata) -> bool {
 
         // FILE_ATTRIBUTE_REPARSE_POINT. Junctions and other reparse points can
         // redirect extraction outside of the user-selected directory.
-        return metadata.file_attributes() & 0x400 != 0;
+        metadata.file_attributes() & 0x400 != 0
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -4276,6 +4326,10 @@ fn ensure_no_link_components(path: &std::path::Path) -> Result<(), String> {
         current.push(component.as_os_str());
         match std::fs::symlink_metadata(&current) {
             Ok(metadata) if is_symlink_or_reparse_point(&metadata) => {
+                #[cfg(target_os = "macos")]
+                if crate::modules::macos_platform::is_system_directory_alias(&current, &metadata) {
+                    continue;
+                }
                 return Err(format!("拒绝经过符号链接或重解析点: {}", current.display()));
             }
             Ok(_) => {}
@@ -4587,6 +4641,32 @@ mod path_security_tests {
 
         assert!(require_existing_file_grant(path, PathAccess::ReadFile).is_err());
         register_path_grant(path, PathAccess::ReadFile, false).expect("register read grant");
+        assert!(require_existing_file_grant(path, PathAccess::ReadFile).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_grants_reject_user_created_directory_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let directory = temp.path().join("real");
+        std::fs::create_dir(&directory).expect("create real directory");
+        std::fs::write(directory.join("safe.txt"), b"safe").expect("create file");
+        let link = temp.path().join("alias");
+        symlink(&directory, &link).expect("create directory symlink");
+        let path = link.join("safe.txt");
+        assert!(register_path_grant(path.to_str().unwrap(), PathAccess::ReadFile, false).is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn file_grants_accept_macos_system_tmp_alias() {
+        let temp = tempfile::tempdir_in("/tmp").expect("create temp dir through system alias");
+        let path = temp.path().join("safe.txt");
+        std::fs::write(&path, b"safe").expect("create file");
+        let path = path.to_str().unwrap();
+        register_path_grant(path, PathAccess::ReadFile, false).expect("register through /tmp");
         assert!(require_existing_file_grant(path, PathAccess::ReadFile).is_ok());
     }
 
@@ -4996,7 +5076,7 @@ fn validate_outgoing_chat_payload(
     local_is_host: bool,
     local_messages: &[ChatServiceMessage],
 ) -> Result<(), String> {
-    let content_bytes = content.as_bytes().len();
+    let content_bytes = content.len();
     match message_type {
         MessageType::Text => {
             if content_bytes == 0 || content_bytes > MAX_TEXT_BYTES || image_data.is_some() {
@@ -5238,6 +5318,7 @@ pub async fn stop_p2p_chat(state: State<'_, AppState>) -> Result<(), String> {
 /// * `Ok(())` - 发送成功
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_p2p_chat_message(
     player_id: String,
     player_name: String,
@@ -5327,7 +5408,7 @@ pub async fn send_p2p_chat_message(
     log::info!(
         "📤 [ChatService] 向 {} 个已授权玩家发送 {} 字节消息",
         authoritative_peers.len(),
-        content.as_bytes().len()
+        content.len()
     );
 
     let total = authoritative_peers.len();
@@ -5463,7 +5544,7 @@ fn is_safe_remote_chat_message(
     {
         return false;
     }
-    let content_bytes = message.content.as_bytes().len();
+    let content_bytes = message.content.len();
     let shape_is_valid = match message.message_type {
         MessageType::Text => {
             content_bytes > 0 && content_bytes <= MAX_TEXT_BYTES && message.image_data.is_none()
@@ -6124,6 +6205,7 @@ pub async fn read_log_file() -> Result<String, String> {
 /// * `remember_window_position` - 是否记住窗口位置
 /// * `enable_gpu_rendering` - 是否启用 GPU 渲染
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_settings(
     language: Option<String>,
     auto_startup: bool,
@@ -6764,6 +6846,7 @@ pub async fn restart_app_with_gpu_settings(
 /// * `Ok(())` - 保存成功
 /// * `Err(String)` - 错误信息
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_exit_node_advanced_config(
     enable_socks5: Option<bool>,
     socks5_port: Option<u16>,

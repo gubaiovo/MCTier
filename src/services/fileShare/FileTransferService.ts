@@ -67,11 +67,7 @@ class FileTransferService {
   /**
    * 下载文件（单线程）
    */
-  private async downloadFile(
-    task: DownloadTask,
-    url: string,
-    signal: AbortSignal
-  ): Promise<void> {
+  private async downloadFile(task: DownloadTask, url: string, signal: AbortSignal): Promise<void> {
     const startTime = Date.now();
     let lastUpdateTime = startTime;
     let lastDownloaded = 0;
@@ -127,9 +123,9 @@ class FileTransferService {
       }
 
       // 保存文件
-      await invoke('write_file_bytes', { 
-        path: task.save_path, 
-        data: Array.from(fileData) 
+      await invoke('write_file_bytes', {
+        path: task.save_path,
+        data: Array.from(fileData),
       });
 
       // 更新任务状态
@@ -156,7 +152,7 @@ class FileTransferService {
       controller.abort();
       console.log('🛑 取消下载:', taskId);
     }
-    
+
     // 【修复】删除已下载的残留文件
     const task = this.downloadTasks.get(taskId);
     if (task?.save_path) {
@@ -191,7 +187,7 @@ class FileTransferService {
    */
   getDownloadingTasks(): DownloadTask[] {
     return this.getAllTasks().filter(
-      task => task.status === 'downloading' || task.status === 'pending'
+      (task) => task.status === 'downloading' || task.status === 'pending'
     );
   }
 
@@ -199,7 +195,7 @@ class FileTransferService {
    * 获取已完成的任务
    */
   getCompletedTasks(): DownloadTask[] {
-    return this.getAllTasks().filter(task => task.status === 'completed');
+    return this.getAllTasks().filter((task) => task.status === 'completed');
   }
 
   /**
@@ -238,7 +234,13 @@ class FileTransferService {
 
   // setWebSocket方法已完全移除
 
-  handleTransferRequest(_requestId: string, _shareId: string, _filePath: string, _fileSize: number, _peerId: string): Promise<void> {
+  handleTransferRequest(
+    _requestId: string,
+    _shareId: string,
+    _filePath: string,
+    _fileSize: number,
+    _peerId: string
+  ): Promise<void> {
     console.warn('handleTransferRequest方法已废弃');
     return Promise.resolve();
   }

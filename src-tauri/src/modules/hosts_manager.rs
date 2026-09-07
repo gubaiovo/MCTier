@@ -2,10 +2,12 @@
 // 用于实现MCTier专属的Magic DNS功能
 
 use crate::modules::error::AppError;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+#[cfg(not(windows))]
+use std::{fs::OpenOptions, io::Write};
 
 fn validate_host_domain(domain: &str) -> Result<(), AppError> {
     if domain.is_empty() || domain.len() > 253 || domain != domain.trim() {
@@ -195,50 +197,92 @@ impl HostsManager {
 
     /// 写入 hosts 文件内容（三处写回共用）。
     ///
-    /// 优先直接写；无权限时在类 Unix 上通过 polkit（`pkexec`）提权覆盖。
-    ///
-    /// 安全要点：提权命令用 **argv 数组**调用 `cp`，绝不把路径拼进 `sh -c`
-    /// 字符串。临时目录路径可能含空格、引号甚至 `$(...)`，一旦经过 shell 解析
-    /// 就是一个以 root 执行的命令注入点。`cp` 收到的两个参数始终是独立 argv，
-    /// 内容再怪也只会被当成文件名。
+    /// Windows 使用受控 helper；macOS 使用系统授权对话框；Linux 在直接
+    /// 写入失败时通过 polkit 提权。路径分别使用独立 argv 或 AppleScript
+    /// 的 quoted form 转义，临时文件禁止跟随符号链接。
     fn write_hosts_file(path: &std::path::Path, content: &str) -> Result<(), AppError> {
         #[cfg(windows)]
         {
             // 开发模式：跳过 hosts 文件写入
             #[cfg(debug_assertions)]
             {
+                let _ = (path, content);
                 log::info!("🔧 开发模式 - 跳过 hosts 文件写入");
-                return Ok(());
+                Ok(())
             }
 
             // 生产模式：通过 privileged helper 写入
             #[cfg(not(debug_assertions))]
             {
-            use sha2::{Digest, Sha256};
+                use sha2::{Digest, Sha256};
 
-            if path != crate::modules::windows_paths::hosts_path() {
+                if path != crate::modules::windows_paths::hosts_path() {
+                    return Err(AppError::FileError("拒绝写入非系统 hosts 路径".to_string()));
+                }
+                let current = std::fs::read(path)
+                    .map_err(|e| AppError::FileError(format!("读取 hosts 文件失败: {}", e)))?;
+                let expected_sha256 = Sha256::digest(&current)
+                    .iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>();
+                crate::modules::privileged_helper::run_one_shot(
+                    crate::modules::privileged_helper::HelperRequest::WriteHosts {
+                        expected_sha256,
+                        content: content.to_string(),
+                    },
+                )
+                .map_err(|error| {
+                    AppError::FileError(format!("无法通过特权 helper 写入 hosts 文件: {}", error))
+                })?;
+                return Ok(());
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS has no polkit. Keep both the destination and commands fixed;
+            // AppleScript's quoted form handles spaces/metacharacters in TMPDIR.
+            if path != std::path::Path::new("/etc/hosts")
+                && path != std::path::Path::new("/private/etc/hosts")
+            {
                 return Err(AppError::FileError("拒绝写入非系统 hosts 路径".to_string()));
             }
-            let current = std::fs::read(path)
-                .map_err(|e| AppError::FileError(format!("读取 hosts 文件失败: {}", e)))?;
-            let expected_sha256 = Sha256::digest(&current)
-                .iter()
-                .map(|byte| format!("{:02x}", byte))
-                .collect::<String>();
-            crate::modules::privileged_helper::run_one_shot(
-                crate::modules::privileged_helper::HelperRequest::WriteHosts {
-                    expected_sha256,
-                    content: content.to_string(),
-                },
-            )
-            .map_err(|error| {
-                AppError::FileError(format!("无法通过特权 helper 写入 hosts 文件: {}", error))
-            })?;
-            return Ok(());
+            use std::os::unix::fs::OpenOptionsExt;
+            let temp_path =
+                std::env::temp_dir().join(format!("mctier-hosts-{}", uuid::Uuid::new_v4()));
+            let result = (|| {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&temp_path)
+                    .map_err(|e| AppError::FileError(format!("创建临时 hosts 文件失败: {}", e)))?;
+                file.write_all(content.as_bytes())
+                    .and_then(|_| file.sync_all())
+                    .map_err(|e| AppError::FileError(format!("写入临时 hosts 文件失败: {}", e)))?;
+                drop(file);
+                let script = r#"on run argv
+do shell script "/bin/cat " & quoted form of (item 1 of argv) & " > /private/etc/hosts && /usr/bin/dscacheutil -flushcache && /usr/bin/killall -HUP mDNSResponder" with administrator privileges
+end run"#;
+                let output = std::process::Command::new("/usr/bin/osascript")
+                    .args(["-e", script, "--"])
+                    .arg(&temp_path)
+                    .output()
+                    .map_err(|e| {
+                        AppError::FileError(format!("启动 macOS hosts 授权失败: {}", e))
+                    })?;
+                if !output.status.success() {
+                    return Err(AppError::FileError(
+                        "macOS hosts 写入授权被取消或失败".to_string(),
+                    ));
+                }
+                Ok(())
+            })();
+            let _ = std::fs::remove_file(&temp_path);
+            result
         }
-            }
 
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             match OpenOptions::new().write(true).truncate(true).open(path) {
                 Ok(mut file) => {
@@ -247,7 +291,7 @@ impl HostsManager {
                     Ok(())
                 }
                 Err(open_error) => {
-                    // Linux/macOS：应用本体以普通用户运行，/etc/hosts 需要一次 polkit 授权。
+                    // Linux：应用本体以普通用户运行，/etc/hosts 需要一次 polkit 授权。
                     log::info!("🔐 [HostsManager] 无直接写权限，请求 pkexec 授权写入 hosts");
 
                     // 临时文件放在私有目录并用 0o644，避免其它用户在覆盖前篡改内容

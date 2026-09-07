@@ -4,7 +4,11 @@
  * - 记录最近一起联机过的玩家
  */
 
-import { isSafeServerNode, isSafeSignalingServer, sanitizeUntrustedText } from '../../security/trustBoundary';
+import {
+  isSafeServerNode,
+  isSafeSignalingServer,
+  sanitizeUntrustedText,
+} from '../../security/trustBoundary';
 
 export interface RecentLobby {
   name: string;
@@ -52,17 +56,22 @@ function normalizeRecentLobby(value: unknown): RecentLobby | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   const name = sanitizeUntrustedText(item.name, 64).trim();
-  const lastJoined = typeof item.lastJoined === 'number' && Number.isFinite(item.lastJoined)
-    ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.lastJoined)))
-    : 0;
+  const lastJoined =
+    typeof item.lastJoined === 'number' && Number.isFinite(item.lastJoined)
+      ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.lastJoined)))
+      : 0;
   if (!name || !lastJoined) return null;
   const playerName = sanitizeUntrustedText(item.playerName, 64).trim();
-  const serverNode = typeof item.serverNode === 'string' && isSafeServerNode(item.serverNode) && item.serverNode !== 'custom'
-    ? item.serverNode.trim()
-    : undefined;
-  const signalingServer = typeof item.signalingServer === 'string' && isSafeSignalingServer(item.signalingServer)
-    ? item.signalingServer.trim()
-    : undefined;
+  const serverNode =
+    typeof item.serverNode === 'string' &&
+    isSafeServerNode(item.serverNode) &&
+    item.serverNode !== 'custom'
+      ? item.serverNode.trim()
+      : undefined;
+  const signalingServer =
+    typeof item.signalingServer === 'string' && isSafeSignalingServer(item.signalingServer)
+      ? item.signalingServer.trim()
+      : undefined;
   return {
     name,
     ...(playerName ? { playerName } : {}),
@@ -83,7 +92,10 @@ function readRecentLobbies(): RecentLobby[] {
 function writeRecentLobbies(value: RecentLobby[]): void {
   // Explicitly rebuild each object so legacy `password` properties cannot be
   // copied back into localStorage during migration.
-  writeJson(LOBBIES_KEY, value.map(({ password: _password, ...lobby }) => lobby));
+  writeJson(
+    LOBBIES_KEY,
+    value.map(({ password: _password, ...lobby }) => lobby)
+  );
 }
 
 function normalizeRecentPlayers(value: unknown): RecentPlayer[] {
@@ -92,12 +104,14 @@ function normalizeRecentPlayers(value: unknown): RecentPlayer[] {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
     const item = candidate as Record<string, unknown>;
     const name = sanitizeUntrustedText(item.name, 64).trim();
-    const lastSeen = typeof item.lastSeen === 'number' && Number.isFinite(item.lastSeen)
-      ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.lastSeen)))
-      : 0;
-    const count = typeof item.count === 'number' && Number.isFinite(item.count)
-      ? Math.max(0, Math.min(1_000_000, Math.trunc(item.count)))
-      : 0;
+    const lastSeen =
+      typeof item.lastSeen === 'number' && Number.isFinite(item.lastSeen)
+        ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(item.lastSeen)))
+        : 0;
+    const count =
+      typeof item.count === 'number' && Number.isFinite(item.count)
+        ? Math.max(0, Math.min(1_000_000, Math.trunc(item.count)))
+        : 0;
     return name && lastSeen ? [{ name, lastSeen, count }] : [];
   });
 }
@@ -109,18 +123,25 @@ export const recentService = {
     if (!name) return;
     let list = readRecentLobbies();
     // Passwords are not a stable local identifier and must never be written.
-    list = list.filter((item) => !(
-      item.name === name &&
-      item.serverNode === lobby.serverNode &&
-      item.signalingServer === lobby.signalingServer
-    ));
+    list = list.filter(
+      (item) =>
+        !(
+          item.name === name &&
+          item.serverNode === lobby.serverNode &&
+          item.signalingServer === lobby.signalingServer
+        )
+    );
     const playerName = sanitizeUntrustedText(lobby.playerName, 64).trim();
-    const serverNode = typeof lobby.serverNode === 'string' && isSafeServerNode(lobby.serverNode) && lobby.serverNode !== 'custom'
-      ? lobby.serverNode.trim()
-      : undefined;
-    const signalingServer = typeof lobby.signalingServer === 'string' && isSafeSignalingServer(lobby.signalingServer)
-      ? lobby.signalingServer.trim()
-      : undefined;
+    const serverNode =
+      typeof lobby.serverNode === 'string' &&
+      isSafeServerNode(lobby.serverNode) &&
+      lobby.serverNode !== 'custom'
+        ? lobby.serverNode.trim()
+        : undefined;
+    const signalingServer =
+      typeof lobby.signalingServer === 'string' && isSafeSignalingServer(lobby.signalingServer)
+        ? lobby.signalingServer.trim()
+        : undefined;
     list.unshift({
       name,
       ...(playerName ? { playerName } : {}),
@@ -141,8 +162,9 @@ export const recentService = {
 
   removeLobby(name: string, lastJoined?: number): void {
     const safeName = sanitizeUntrustedText(name, 64).trim();
-    const list = readRecentLobbies().filter((lobby) =>
-      !(lobby.name === safeName && (lastJoined === undefined || lobby.lastJoined === lastJoined))
+    const list = readRecentLobbies().filter(
+      (lobby) =>
+        !(lobby.name === safeName && (lastJoined === undefined || lobby.lastJoined === lastJoined))
     );
     writeRecentLobbies(list);
   },
@@ -156,12 +178,12 @@ export const recentService = {
     if (!names || names.length === 0) return;
     const list = normalizeRecentPlayers(readJson<unknown>(PLAYERS_KEY));
     const map = new Map<string, RecentPlayer>();
-    list.forEach(p => map.set(p.name, p));
+    list.forEach((p) => map.set(p.name, p));
     const now = Date.now();
     names
       .map((name) => sanitizeUntrustedText(name, 64).trim())
       .filter(Boolean)
-      .forEach(name => {
+      .forEach((name) => {
         const existing = map.get(name);
         if (existing) {
           existing.lastSeen = now;
@@ -176,7 +198,9 @@ export const recentService = {
   },
 
   getRecentPlayers(): RecentPlayer[] {
-    const list = normalizeRecentPlayers(readJson<unknown>(PLAYERS_KEY)).sort((a, b) => b.lastSeen - a.lastSeen);
+    const list = normalizeRecentPlayers(readJson<unknown>(PLAYERS_KEY)).sort(
+      (a, b) => b.lastSeen - a.lastSeen
+    );
     writeJson(PLAYERS_KEY, list.slice(0, MAX_PLAYERS));
     return list;
   },
@@ -208,8 +232,13 @@ export const recentService = {
     if (!safeName) return false;
     let list = this.getFavoritePlayers();
     let fav: boolean;
-    if (list.includes(safeName)) { list = list.filter(n => n !== safeName); fav = false; }
-    else { list = [...list, safeName].slice(0, MAX_PLAYERS); fav = true; }
+    if (list.includes(safeName)) {
+      list = list.filter((n) => n !== safeName);
+      fav = false;
+    } else {
+      list = [...list, safeName].slice(0, MAX_PLAYERS);
+      fav = true;
+    }
     writeJson(FAV_PLAYERS_KEY, list);
     return fav;
   },

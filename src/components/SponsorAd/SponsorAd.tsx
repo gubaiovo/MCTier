@@ -34,7 +34,10 @@ export const SponsorAd: React.FC = () => {
         type="button"
         className="sponsor-ad-body"
         onClick={openSponsor}
-        title={tl('浪浪云 BGP 服务器 · 让游戏组网延迟更低更快', 'Langlangyun BGP servers — lower latency and faster game networking')}
+        title={tl(
+          '浪浪云 BGP 服务器 · 让游戏组网延迟更低更快',
+          'Langlangyun BGP servers — lower latency and faster game networking'
+        )}
       >
         <span className="sponsor-ad-logo" role="img" aria-label={tl('浪浪云', 'Langlangyun')} />
         <span className="sponsor-ad-text">
@@ -46,7 +49,16 @@ export const SponsorAd: React.FC = () => {
           </span>
         </span>
         <span className="sponsor-ad-arrow" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M7 17 17 7" />
             <path d="M9 7h8v8" />
           </svg>

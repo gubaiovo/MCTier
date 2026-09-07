@@ -72,6 +72,20 @@ export interface PeerConnection {
   createdAt: number; // 连接创建时间
 }
 
+interface LobbyMeta {
+  hostId?: string;
+  maxPlayers?: number | null;
+  isPublic?: boolean;
+  mutedPlayers?: string[];
+}
+
+export class SignalingRegistrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SignalingRegistrationError';
+  }
+}
+
 const SIGNALING_PROTOCOL_VERSION = 3;
 const MAX_QUEUED_WS_FRAMES = 64;
 const MAX_QUEUED_WS_BYTES = 1024 * 1024;
@@ -229,12 +243,7 @@ export class WebRTCClient {
     downloadUrl: string
   ) => void;
   // 房主/大厅管理相关回调
-  private onLobbyMetaCallback?: (meta: {
-    hostId?: string;
-    maxPlayers?: number | null;
-    isPublic?: boolean;
-    mutedPlayers?: string[];
-  }) => void;
+  private onLobbyMetaCallback?: (meta: LobbyMeta) => void;
   private onHostChangedCallback?: (hostId: string) => void;
   private onMuteChangedCallback?: (playerId: string, muted: boolean) => void;
   private onLobbyOptionsChangedCallback?: (maxPlayers: number | null, isPublic: boolean) => void;
@@ -249,6 +258,7 @@ export class WebRTCClient {
       useDomain?: boolean;
     }
   > = new Map();
+  private pendingLobbyMeta: LobbyMeta | null = null;
 
   /**
    * 初始化 WebRTC 客户端
@@ -352,6 +362,8 @@ export class WebRTCClient {
       // 【优化】只在首次初始化时清空已知玩家列表
       // 信令服务器重连时不应该清空，避免重复建立连接
       this.knownPlayers.clear();
+      this.pendingPlayerJoined.clear();
+      this.pendingLobbyMeta = null;
       this.playerDomains.clear();
       this.clearAllPendingPlayerLeaves();
 
@@ -428,9 +440,15 @@ export class WebRTCClient {
       console.error('❌ WebRTC 初始化失败:', error);
       // 清理已创建的资源
       await this.cleanup();
-      throw new Error(
-        tl(`无法初始化语音系统: ${error}`, `Failed to initialize the voice system: ${error}`)
-      );
+      // Preserve the original error type so the lobby coordinator can tell an
+      // authoritative rejection (password/version) from a transient socket
+      // failure. Treating both the same used to tear down a healthy EasyTier
+      // room on macOS after a brief signaling interruption.
+      throw error instanceof Error
+        ? error
+        : new Error(
+            tl(`无法初始化语音系统: ${error}`, `Failed to initialize the voice system: ${error}`)
+          );
     }
   }
 
@@ -470,6 +488,9 @@ export class WebRTCClient {
         } catch {
           /* ignore */
         }
+        // 密码/版本等注册拒绝不是瞬时网络故障，重复连接只会让客户端
+        // 看起来进入了一个空大厅，并给服务器制造无意义的重试。
+        if (e instanceof SignalingRegistrationError) throw e;
         if (attempt < maxAttempts) {
           await new Promise((r) => setTimeout(r, 1200));
           lobbySessionCoordinator.assertCurrent(ticket);
@@ -505,28 +526,46 @@ export class WebRTCClient {
 
         const socket = new WebSocket(this.signalingServerUrl);
         let hasOpened = false;
-        let registrationSent = false;
-        let challengeHandled = false;
-        let challengeTimeout: number | null = null;
+        let registrationAccepted = false;
+        let registrationRejected = false;
+        let promiseSettled = false;
+        let registrationTimeout: number | null = null;
         this.websocket = socket;
 
-        const clearChallengeTimeout = () => {
-          if (challengeTimeout !== null) {
-            clearTimeout(challengeTimeout);
-            challengeTimeout = null;
+        const clearRegistrationTimeout = () => {
+          if (registrationTimeout !== null) {
+            window.clearTimeout(registrationTimeout);
+            registrationTimeout = null;
           }
         };
+
+        const acceptRegistration = () => {
+          if (promiseSettled) return;
+          promiseSettled = true;
+          registrationAccepted = true;
+          clearRegistrationTimeout();
+          resolve();
+        };
+
+        const rejectRegistration = (error: Error) => {
+          if (promiseSettled) return;
+          promiseSettled = true;
+          registrationRejected = true;
+          clearRegistrationTimeout();
+          reject(error);
+        };
+
+        let registrationSent = false;
+        let challengeHandled = false;
+        registrationTimeout = window.setTimeout(() => {
+          rejectRegistration(new Error('信令服务器未在 15 秒内确认大厅注册'));
+          socket.close();
+        }, 15_000);
 
         this.websocket.onopen = () => {
           if (this.websocket !== socket) return;
           hasOpened = true;
           console.log('✅ 已连接到信令服务器');
-
-          challengeTimeout = window.setTimeout(() => {
-            if (this.websocket !== socket || registrationSent) return;
-            socket.close(1008, 'server-challenge-timeout');
-            reject(new Error('信令服务器未及时发送协议 v3 challenge'));
-          }, 10_000);
 
           // 启动 WebSocket 心跳保活
           this.startWebSocketHeartbeat();
@@ -552,21 +591,20 @@ export class WebRTCClient {
                 message.protocolVersion !== SIGNALING_PROTOCOL_VERSION ||
                 !isServerChallenge(message.challenge)
               ) {
-                clearChallengeTimeout();
                 socket.close(1008, 'invalid-server-challenge');
-                reject(new Error('信令服务器返回了无效的协议 v3 challenge'));
+                rejectRegistration(
+                  new SignalingRegistrationError('信令服务器返回了无效的协议 v3 challenge')
+                );
                 return;
               }
               challengeHandled = true;
-              clearChallengeTimeout();
               void this.sendV3Registration(socket, message.challenge)
                 .then(() => {
                   registrationSent = true;
-                  resolve();
                 })
                 .catch((error) => {
                   socket.close(1008, 'register-v3-failed');
-                  reject(error);
+                  rejectRegistration(error instanceof Error ? error : new Error(String(error)));
                 });
               return;
             }
@@ -577,15 +615,119 @@ export class WebRTCClient {
               socket.close(1009, 'signaling-queue-overflow');
               return;
             }
+            if (message.type === 'register-success') {
+              const hasAuthenticatedLobbyState =
+                registrationSent &&
+                message.clientId === this.localPlayerId &&
+                this.safeSessionGeneration(message.sessionGeneration) !== null &&
+                isSafeIdentifier(message.lobbyId) &&
+                isSafeChatToken(message.chatToken) &&
+                typeof message.chatTokenEpoch === 'number' &&
+                Number.isSafeInteger(message.chatTokenEpoch) &&
+                message.chatTokenEpoch > 0;
+              if (!hasAuthenticatedLobbyState) {
+                const protocolError = new SignalingRegistrationError(
+                  tl(
+                    '信令服务器协议过旧，缺少大厅认证信息；请更新信令服务器后重试',
+                    'The signaling server protocol is outdated and lacks lobby authentication; update the server and retry'
+                  )
+                );
+                rejectRegistration(protocolError);
+                console.error('❌ 信令服务器返回了不受支持的旧版注册响应');
+                try {
+                  socket.close(1002, 'outdated-signaling-protocol');
+                } catch {
+                  /* ignore */
+                }
+                return;
+              }
+            }
+
             this.queuedWebSocketFrames += 1;
             this.queuedWebSocketBytes += frameBytes;
-            this.websocketMessageQueue = this.websocketMessageQueue
-              .then(() => this.handleWebSocketMessage(message))
+            const messageProcessing = this.websocketMessageQueue.then(() => {
+              if (this.websocket !== socket || registrationRejected) return;
+              return this.handleWebSocketMessage(message);
+            });
+            this.websocketMessageQueue = messageProcessing
               .catch((error) => console.error('WebSocket message processing failed:', error))
               .finally(() => {
                 this.queuedWebSocketFrames = Math.max(0, this.queuedWebSocketFrames - 1);
                 this.queuedWebSocketBytes = Math.max(0, this.queuedWebSocketBytes - frameBytes);
               });
+
+            if (message.type === 'register-success') {
+              // 只有权威注册消息完成聊天/文件认证初始化后，才允许界面进入大厅。
+              // 这也保证随后排队的 players-list 会由已经初始化的会话消费。
+              void messageProcessing
+                .then(() => {
+                  if (
+                    this.websocket === socket &&
+                    registrationSent &&
+                    this.serverSessionGeneration ===
+                      this.safeSessionGeneration(message.sessionGeneration) &&
+                    this.chatToken === message.chatToken &&
+                    this.chatTokenEpoch === message.chatTokenEpoch
+                  ) {
+                    acceptRegistration();
+                    return;
+                  }
+
+                  rejectRegistration(
+                    new SignalingRegistrationError(
+                      tl(
+                        '信令大厅认证初始化失败，请检查服务器版本后重试',
+                        'Lobby authentication initialization failed; check the server version and retry'
+                      )
+                    )
+                  );
+                  try {
+                    socket.close(1011, 'signaling-auth-initialization-failed');
+                  } catch {
+                    /* ignore */
+                  }
+                })
+                .catch((error) => {
+                  console.error('❌ 初始化信令大厅认证失败:', error);
+                  rejectRegistration(
+                    new SignalingRegistrationError(
+                      tl(
+                        '信令大厅认证初始化失败，请检查服务器版本后重试',
+                        'Lobby authentication initialization failed; check the server version and retry'
+                      )
+                    )
+                  );
+                  try {
+                    socket.close(1011, 'signaling-auth-initialization-failed');
+                  } catch {
+                    /* ignore */
+                  }
+                });
+            } else if (message.type === 'register-error') {
+              const detail =
+                typeof message.message === 'string' && message.message.trim()
+                  ? message.message.trim()
+                  : tl('大厅名称或密码不匹配', 'The lobby name or password does not match');
+              rejectRegistration(
+                new SignalingRegistrationError(
+                  tl(`无法加入信令大厅：${detail}`, `Unable to join the signaling lobby: ${detail}`)
+                )
+              );
+              try {
+                socket.close();
+              } catch {
+                /* ignore */
+              }
+            } else if (message.type === 'version-too-old') {
+              rejectRegistration(
+                new SignalingRegistrationError(
+                  tl(
+                    '客户端版本过低，无法加入大厅',
+                    'The client version is too old to join the lobby'
+                  )
+                )
+              );
+            }
           } catch (error) {
             console.error('❌ 解析WebSocket消息失败:', error);
           }
@@ -594,12 +736,14 @@ export class WebRTCClient {
         this.websocket.onerror = (error) => {
           if (this.websocket !== socket) return;
           console.error('❌ WebSocket连接错误:', error);
-          if (!hasOpened) reject(new Error('无法连接到信令服务器'));
+          if (!hasOpened) rejectRegistration(new Error('无法连接到信令服务器'));
         };
 
         this.websocket.onclose = () => {
-          if (this.websocket !== socket) return;
-          clearChallengeTimeout();
+          if (this.websocket !== socket) {
+            rejectRegistration(new Error('信令连接已被替换或取消'));
+            return;
+          }
           this.websocket = null;
           this.resetRemoteControlOnSignalingDisconnect();
           if (this.websocketStableTimer !== null) {
@@ -611,17 +755,22 @@ export class WebRTCClient {
           // 停止 WebSocket 心跳
           this.stopWebSocketHeartbeat();
 
+          if (!promiseSettled) {
+            rejectRegistration(
+              new Error(hasOpened ? '信令服务器在确认大厅注册前断开' : '信令服务器在连接建立前断开')
+            );
+            return;
+          }
+
+          // 注册被明确拒绝后由 initialize() 负责完整清理，不应进入自动重连。
+          if (registrationRejected) return;
+
           // 如果不是主动断开，尝试重连
           if (this.isIntentionalDisconnect) {
             return;
           }
 
-          if (!hasOpened || !registrationSent) {
-            reject(new Error('信令服务器在协议 v3 注册完成前断开'));
-            return;
-          }
-
-          if (!this.isIntentionalDisconnect) {
+          if (registrationAccepted && !this.isIntentionalDisconnect) {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * this.reconnectAttempts, 5000); // 线性退避，最多5秒
             console.log(`🔄 将在 ${delay}ms 后尝试第 ${this.reconnectAttempts} 次重连...`);
@@ -1107,7 +1256,7 @@ export class WebRTCClient {
           // 收到 pong 响应（上方已重置超时，这里仅用于明确分支）
           break;
 
-        case 'register-success':
+        case 'register-success': {
           // 注册成功
           if (message.clientId !== this.localPlayerId) {
             this.websocket?.close(1008, 'signaling-identity-mismatch');
@@ -1142,28 +1291,32 @@ export class WebRTCClient {
           }
           console.log('✅ 注册成功');
           // 携带房主/人数上限/公开状态/禁言列表等大厅元数据
-          if (this.onLobbyMetaCallback) {
-            const mutedPlayers: string[] | undefined = Array.isArray(message.mutedPlayers)
-              ? Array.from(
-                  new Set<string>(
-                    (message.mutedPlayers as unknown[]).filter((id: unknown): id is string =>
-                      isSafeIdentifier(id)
-                    )
+          const mutedPlayers: string[] | undefined = Array.isArray(message.mutedPlayers)
+            ? Array.from(
+                new Set<string>(
+                  (message.mutedPlayers as unknown[]).filter((id: unknown): id is string =>
+                    isSafeIdentifier(id)
                   )
                 )
-              : undefined;
-            const maxPlayers =
-              typeof message.maxPlayers === 'number' && Number.isSafeInteger(message.maxPlayers)
-                ? Math.max(1, Math.min(100_000, message.maxPlayers))
-                : null;
-            this.onLobbyMetaCallback({
-              hostId: registeredHostId,
-              maxPlayers,
-              isPublic: typeof message.isPublic === 'boolean' ? message.isPublic : undefined,
-              mutedPlayers,
-            });
+              )
+            : undefined;
+          const maxPlayers =
+            typeof message.maxPlayers === 'number' && Number.isSafeInteger(message.maxPlayers)
+              ? Math.max(1, Math.min(100_000, message.maxPlayers))
+              : null;
+          const lobbyMeta: LobbyMeta = {
+            hostId: registeredHostId,
+            maxPlayers,
+            isPublic: typeof message.isPublic === 'boolean' ? message.isPublic : undefined,
+            mutedPlayers,
+          };
+          if (this.onLobbyMetaCallback) {
+            this.onLobbyMetaCallback(lobbyMeta);
+          } else {
+            this.pendingLobbyMeta = lobbyMeta;
           }
           break;
+        }
 
         case 'chat-token-rotated':
           {
@@ -1312,7 +1465,6 @@ export class WebRTCClient {
           // 先记录处理前的已知集合与本次列表出现的 ID，循环结束后据此清理残留幽灵。
           const knownBefore = new Set(this.knownPlayers);
           const listedIds = new Set<string>();
-          const listedIps = new Set<string>();
 
           for (const rawPlayer of message.players) {
             if (!rawPlayer || typeof rawPlayer !== 'object') continue;
@@ -1339,22 +1491,14 @@ export class WebRTCClient {
             if (player.playerId === this.localPlayerId) {
               continue;
             }
-            // 虚拟 IP 在大厅内唯一。服务端残留旧连接或重复广播本机身份时，
-            // 不把同一台设备当成远端玩家，也不向自己的 IP 建立语音连接。
-            if (player.virtualIp && this.virtualIp && player.virtualIp === this.virtualIp) {
-              console.warn('⚠️ 忽略与本机虚拟 IP 相同的玩家条目');
-              continue;
-            }
+            // 成员身份只以信令服务器分配的 playerId 为准。虚拟 IP 可能在
+            // TUN 刚建立时短暂缺失、被旧日志误报，或在异常 DHCP 状态下重复；
+            // 用 IP 过滤会让 macOS 客户端把真实的 Windows/Android 成员隐藏掉。
             if (listedIds.has(player.playerId)) {
               console.warn('⚠️ 忽略重复的玩家身份条目');
               continue;
             }
-            if (player.virtualIp && listedIps.has(player.virtualIp)) {
-              console.warn('⚠️ 忽略重复的玩家虚拟 IP 条目');
-              continue;
-            }
             listedIds.add(player.playerId);
-            if (player.virtualIp) listedIps.add(player.virtualIp);
 
             const wasPendingLeave = this.clearPendingPlayerLeave(player.playerId);
             if (wasPendingLeave) {
@@ -4226,15 +4370,12 @@ export class WebRTCClient {
   }
 
   // ==================== 房主/大厅管理 ====================
-  onLobbyMeta(
-    cb: (meta: {
-      hostId?: string;
-      maxPlayers?: number | null;
-      isPublic?: boolean;
-      mutedPlayers?: string[];
-    }) => void
-  ): void {
+  onLobbyMeta(cb: (meta: LobbyMeta) => void): void {
     this.onLobbyMetaCallback = cb;
+    if (this.pendingLobbyMeta) {
+      cb(this.pendingLobbyMeta);
+      this.pendingLobbyMeta = null;
+    }
   }
   onHostChanged(cb: (hostId: string) => void): void {
     this.onHostChangedCallback = cb;
@@ -4479,6 +4620,8 @@ export class WebRTCClient {
       this.websocketReconnectInFlight = false;
       this.manualReconnectingPeers.clear();
       this.knownPlayers.clear();
+      this.pendingPlayerJoined.clear();
+      this.pendingLobbyMeta = null;
       this.authoritativePlayers.clear();
       this.authoritativeSnapshotVersion = 0;
       this.serverSessionGeneration = '';

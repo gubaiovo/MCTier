@@ -15,11 +15,136 @@ interface EmojiPickerProps {
 
 // 常用 Emoji 分类（id 稳定，label 随语言翻译）
 const EMOJI_CATEGORIES: { id: string; label: () => string; emojis: string[] }[] = [
-  { id: 'smileys', label: () => tl('笑脸', 'Smileys'), emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙'] },
-  { id: 'gestures', label: () => tl('手势', 'Gestures'), emojis: ['👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '🙏'] },
-  { id: 'emotions', label: () => tl('表情', 'Emotions'), emojis: ['🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑'] },
-  { id: 'symbols', label: () => tl('符号', 'Symbols'), emojis: ['❤️', '💔', '💕', '💖', '💗', '💙', '💚', '💛', '🧡', '💜', '🖤', '💯', '💢', '💥', '💫', '💦', '💨', '🕳️', '💬', '👁️'] },
-  { id: 'others', label: () => tl('其他', 'Others'), emojis: ['🎮', '🎯', '🎲', '🎰', '🎳', '🎉', '🎊', '🎈', '🎁', '🏆', '🥇', '🥈', '🥉', '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏓'] },
+  {
+    id: 'smileys',
+    label: () => tl('笑脸', 'Smileys'),
+    emojis: [
+      '😀',
+      '😃',
+      '😄',
+      '😁',
+      '😆',
+      '😅',
+      '🤣',
+      '😂',
+      '🙂',
+      '🙃',
+      '😉',
+      '😊',
+      '😇',
+      '🥰',
+      '😍',
+      '🤩',
+      '😘',
+      '😗',
+      '😚',
+      '😙',
+    ],
+  },
+  {
+    id: 'gestures',
+    label: () => tl('手势', 'Gestures'),
+    emojis: [
+      '👍',
+      '👎',
+      '👌',
+      '✌️',
+      '🤞',
+      '🤟',
+      '🤘',
+      '🤙',
+      '👈',
+      '👉',
+      '👆',
+      '👇',
+      '☝️',
+      '✋',
+      '🤚',
+      '🖐️',
+      '🖖',
+      '👋',
+      '🤝',
+      '🙏',
+    ],
+  },
+  {
+    id: 'emotions',
+    label: () => tl('表情', 'Emotions'),
+    emojis: [
+      '🥺',
+      '😢',
+      '😭',
+      '😤',
+      '😠',
+      '😡',
+      '🤬',
+      '😱',
+      '😨',
+      '😰',
+      '😥',
+      '😓',
+      '🤗',
+      '🤔',
+      '🤭',
+      '🤫',
+      '🤥',
+      '😶',
+      '😐',
+      '😑',
+    ],
+  },
+  {
+    id: 'symbols',
+    label: () => tl('符号', 'Symbols'),
+    emojis: [
+      '❤️',
+      '💔',
+      '💕',
+      '💖',
+      '💗',
+      '💙',
+      '💚',
+      '💛',
+      '🧡',
+      '💜',
+      '🖤',
+      '💯',
+      '💢',
+      '💥',
+      '💫',
+      '💦',
+      '💨',
+      '🕳️',
+      '💬',
+      '👁️',
+    ],
+  },
+  {
+    id: 'others',
+    label: () => tl('其他', 'Others'),
+    emojis: [
+      '🎮',
+      '🎯',
+      '🎲',
+      '🎰',
+      '🎳',
+      '🎉',
+      '🎊',
+      '🎈',
+      '🎁',
+      '🏆',
+      '🥇',
+      '🥈',
+      '🥉',
+      '⚽',
+      '🏀',
+      '🏈',
+      '⚾',
+      '🎾',
+      '🏐',
+      '🏓',
+    ],
+  },
 ];
 
 export const EmojiPicker: React.FC<EmojiPickerProps> = ({ onSelect, onClose }) => {
@@ -61,7 +186,14 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({ onSelect, onClose }) =
             ))}
           </div>
           <button className="emoji-close-btn" onClick={onClose}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>

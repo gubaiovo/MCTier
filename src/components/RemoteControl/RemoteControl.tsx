@@ -27,31 +27,37 @@ export const RemoteControl: React.FC = () => {
   const surfaceRef = useRef<HTMLDivElement>(null);
 
   // ===== 计算指针在远程屏幕中的归一化坐标（object-fit: contain 信箱映射） =====
-  const toNormalized = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
-    const surface = surfaceRef.current;
-    const video = videoRef.current;
-    if (!surface || !video || !video.videoWidth || !video.videoHeight) return null;
-    const rect = surface.getBoundingClientRect();
-    const cw = rect.width;
-    const ch = rect.height;
-    const vidRatio = video.videoWidth / video.videoHeight;
-    const boxRatio = cw / ch;
-    let contentW = cw, contentH = ch, offX = 0, offY = 0;
-    if (vidRatio > boxRatio) {
-      // 视频更宽，左右占满，上下留黑边
-      contentW = cw;
-      contentH = cw / vidRatio;
-      offY = (ch - contentH) / 2;
-    } else {
-      contentH = ch;
-      contentW = ch * vidRatio;
-      offX = (cw - contentW) / 2;
-    }
-    const px = clientX - rect.left - offX;
-    const py = clientY - rect.top - offY;
-    if (px < 0 || py < 0 || px > contentW || py > contentH) return null;
-    return { x: px / contentW, y: py / contentH };
-  }, []);
+  const toNormalized = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const surface = surfaceRef.current;
+      const video = videoRef.current;
+      if (!surface || !video || !video.videoWidth || !video.videoHeight) return null;
+      const rect = surface.getBoundingClientRect();
+      const cw = rect.width;
+      const ch = rect.height;
+      const vidRatio = video.videoWidth / video.videoHeight;
+      const boxRatio = cw / ch;
+      let contentW = cw,
+        contentH = ch,
+        offX = 0,
+        offY = 0;
+      if (vidRatio > boxRatio) {
+        // 视频更宽，左右占满，上下留黑边
+        contentW = cw;
+        contentH = cw / vidRatio;
+        offY = (ch - contentH) / 2;
+      } else {
+        contentH = ch;
+        contentW = ch * vidRatio;
+        offX = (cw - contentW) / 2;
+      }
+      const px = clientX - rect.left - offX;
+      const py = clientY - rect.top - offY;
+      if (px < 0 || py < 0 || px > contentW || py > contentH) return null;
+      return { x: px / contentW, y: py / contentH };
+    },
+    []
+  );
 
   // ===== 监听服务事件 =====
   useEffect(() => {
@@ -101,7 +107,8 @@ export const RemoteControl: React.FC = () => {
       const reason = (e as CustomEvent).detail?.reason;
       setWaiting(false);
       if (reason === 'busy') message.warning(tl('对方正忙，无法发起远程控制', 'The peer is busy'));
-      else if (reason === 'timeout') message.warning(tl('对方未响应远程控制请求', 'The peer did not respond'));
+      else if (reason === 'timeout')
+        message.warning(tl('对方未响应远程控制请求', 'The peer did not respond'));
       else message.info(tl('对方拒绝了远程控制', 'The peer rejected remote control'));
     };
 
@@ -186,7 +193,9 @@ export const RemoteControl: React.FC = () => {
         <div className="rc-banner rc-waiting">
           <span className="rc-dot" />
           {tl('正在等待对方接受远程控制…', 'Waiting for the peer to accept…')}
-          <button className="rc-banner-btn" onClick={stop}>{tl('取消', 'Cancel')}</button>
+          <button className="rc-banner-btn" onClick={stop}>
+            {tl('取消', 'Cancel')}
+          </button>
         </div>
       )}
 
@@ -195,7 +204,9 @@ export const RemoteControl: React.FC = () => {
         <div className="rc-banner rc-controlled">
           <span className="rc-dot" />
           {tl(`${controlledBy} 正在远程控制你的设备`, `${controlledBy} is controlling your device`)}
-          <button className="rc-banner-btn danger" onClick={stop}>{tl('停止被控', 'Stop')}</button>
+          <button className="rc-banner-btn danger" onClick={stop}>
+            {tl('停止被控', 'Stop')}
+          </button>
         </div>
       )}
 
@@ -209,7 +220,9 @@ export const RemoteControl: React.FC = () => {
             <span className="rc-viewer-hint">
               {tl('鼠标键盘将直接操作对方设备', 'Your mouse & keyboard control the remote device')}
             </span>
-            <button className="rc-viewer-stop" onClick={stop}>{tl('结束', 'End')}</button>
+            <button className="rc-viewer-stop" onClick={stop}>
+              {tl('结束', 'End')}
+            </button>
           </div>
           <div
             className="rc-surface"

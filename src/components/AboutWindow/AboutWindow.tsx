@@ -28,6 +28,7 @@ import {
 } from '../icons';
 import { useEscapeKey } from '../../hooks';
 import { OnboardingWizard } from '../OnboardingWizard/OnboardingWizard';
+import { startWindowDrag } from '../../utils/windowDrag';
 import './AboutWindow.css';
 
 const { Title, Paragraph, Text } = Typography;
@@ -71,7 +72,11 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
   return (
     <div className="about-window">
       {/* 顶部拖拽区域 */}
-      <div className="about-window-drag-area" data-tauri-drag-region />
+      <div
+        className="about-window-drag-area"
+        data-tauri-drag-region
+        onMouseDown={startWindowDrag}
+      />
 
       <motion.div
         className="about-window-content"
@@ -436,8 +441,15 @@ export const AboutWindow: React.FC<AboutWindowProps> = ({ onClose }) => {
                   <li>
                     {tl('Windows 端：', 'Windows: ')}
                     {tl(
-                      'v2.5.0（commit 88a45d11...），独立进程调用，未修改源码',
-                      'v2.5.0 (commit 88a45d11...), run as a separate process, source unmodified'
+                      'v2.5.0（commit 88a45d11...），独立进程调用，已应用 Npcap 兼容补丁',
+                      'v2.5.0 (commit 88a45d11...), run as a separate process with the Npcap compatibility patch'
+                    )}
+                  </li>
+                  <li>
+                    {tl('macOS 端：', 'macOS: ')}
+                    {tl(
+                      'v2.6.4（commit 8428a89d...），独立进程调用，未修改源码',
+                      'v2.6.4 (commit 8428a89d...), run as a separate process, source unmodified'
                     )}
                   </li>
                   <li>

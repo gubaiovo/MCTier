@@ -22,7 +22,9 @@
   cursor: pointer;
   text-align: left;
   /* 只过渡颜色相关属性：亮色主题下过渡 transform 会让实心浅色按钮在 hover 时重绘闪烁 */
-  transition: background-color 0.16s ease, border-color 0.16s ease;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .sponsor-ad-body:hover {

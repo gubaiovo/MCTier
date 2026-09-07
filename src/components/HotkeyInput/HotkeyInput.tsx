@@ -45,7 +45,7 @@ export const HotkeyInput: React.FC<HotkeyInputProps> = ({
 
     // 主键
     const key = e.key;
-    
+
     // 排除单独的修饰键
     if (!['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
       // 特殊键处理
@@ -63,11 +63,11 @@ export const HotkeyInput: React.FC<HotkeyInputProps> = ({
       const hotkey = keys.join('+');
       setDisplayValue(hotkey);
       setIsRecording(false);
-      
+
       if (onChange) {
         onChange(hotkey);
       }
-      
+
       // 失去焦点
       if (inputRef.current) {
         inputRef.current.blur();

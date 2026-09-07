@@ -41,7 +41,7 @@ export const HostPanel: React.FC<HostPanelProps> = ({ visible, onClose }) => {
     if (visible) {
       setMaxValue(maxPlayers ?? 0);
       setPub(isPublicLobby);
-      setDesc(descStorageKey ? (localStorage.getItem(descStorageKey) || '') : '');
+      setDesc(descStorageKey ? localStorage.getItem(descStorageKey) || '' : '');
       setAnnounceDraft(announcement);
     }
   }, [visible, maxPlayers, isPublicLobby, announcement, descStorageKey]);
@@ -52,11 +52,22 @@ export const HostPanel: React.FC<HostPanelProps> = ({ visible, onClose }) => {
   const applyMax = () => {
     const v = Math.max(0, Math.min(64, maxValue || 0));
     if (v !== 0 && v < currentCount) {
-      message.warning(tl('人数上限不能小于当前在线人数（', 'Max players cannot be less than current online count (') + currentCount + '）');
+      message.warning(
+        tl(
+          '人数上限不能小于当前在线人数（',
+          'Max players cannot be less than current online count ('
+        ) +
+          currentCount +
+          '）'
+      );
       return;
     }
     webrtcClient.setLobbyOptions({ maxPlayers: v });
-    message.success(v === 0 ? tl('已取消人数上限', 'Player limit removed') : tl('人数上限已设为 ', 'Max players set to ') + v);
+    message.success(
+      v === 0
+        ? tl('已取消人数上限', 'Player limit removed')
+        : tl('人数上限已设为 ', 'Max players set to ') + v
+    );
   };
 
   const applyPublic = (checked: boolean) => {
@@ -71,31 +82,50 @@ export const HostPanel: React.FC<HostPanelProps> = ({ visible, onClose }) => {
       isPublic: checked,
       description: desc,
       // 公开时附带房主当前使用的节点地址，供广场加入者自动同步（保证节点一致可互通）
-      serverNode: checked ? (localStorage.getItem('mctier_current_node') || undefined) : undefined,
+      serverNode: checked ? localStorage.getItem('mctier_current_node') || undefined : undefined,
     });
-    message.success(checked ? tl('已发布到公开广场', 'Published to public plaza') : tl('已从公开广场下架', 'Removed from public plaza'));
+    message.success(
+      checked
+        ? tl('已发布到公开广场', 'Published to public plaza')
+        : tl('已从公开广场下架', 'Removed from public plaza')
+    );
   };
 
   const publishAnnounce = () => {
     const text = announceDraft.trim();
     setAnnouncement(text);
     void p2pChatService.sendControlMessage('announce', text);
-    message.success(text ? tl('公告已发布', 'Announcement published') : tl('已清空公告', 'Announcement cleared'));
+    message.success(
+      text ? tl('公告已发布', 'Announcement published') : tl('已清空公告', 'Announcement cleared')
+    );
   };
 
   return (
-    <Modal title={tl('房主管理', 'Host Panel')} open={visible} onCancel={onClose} footer={[
-      <Button key="close" type="primary" onClick={onClose}>{tl('完成', 'Done')}</Button>,
-    ]} width={440} centered>
+    <Modal
+      title={tl('房主管理', 'Host Panel')}
+      open={visible}
+      onCancel={onClose}
+      footer={[
+        <Button key="close" type="primary" onClick={onClose}>
+          {tl('完成', 'Done')}
+        </Button>,
+      ]}
+      width={440}
+      centered
+    >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Text strong>{tl('人数上限', 'Max Players')}</Text>
           <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-            {tl('0 表示不限制。当前在线 ', '0 = unlimited. Online now: ')}{currentCount}{tl(' 人。', '')}
+            {tl('0 表示不限制。当前在线 ', '0 = unlimited. Online now: ')}
+            {currentCount}
+            {tl(' 人。', '')}
           </Paragraph>
           <Space>
             <InputNumber min={0} max={64} value={maxValue} onChange={(v) => setMaxValue(v ?? 0)} />
-            <Button type="primary" onClick={applyMax}>{tl('应用', 'Apply')}</Button>
+            <Button type="primary" onClick={applyMax}>
+              {tl('应用', 'Apply')}
+            </Button>
           </Space>
         </div>
 
@@ -105,7 +135,10 @@ export const HostPanel: React.FC<HostPanelProps> = ({ visible, onClose }) => {
             <Switch checked={pub} onChange={applyPublic} />
           </Space>
           <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
-            {tl('公开大厅不使用密码，陌生人可从公开广场直接加入。', 'Public lobbies have no password and can be joined directly from the plaza.')}
+            {tl(
+              '公开大厅不使用密码，陌生人可从公开广场直接加入。',
+              'Public lobbies have no password and can be joined directly from the plaza.'
+            )}
           </Paragraph>
           <TextArea
             value={desc}
@@ -117,7 +150,10 @@ export const HostPanel: React.FC<HostPanelProps> = ({ visible, onClose }) => {
               if (descStorageKey) localStorage.setItem(descStorageKey, desc);
               if (pub) webrtcClient.setLobbyOptions({ isPublic: true, description: desc });
             }}
-            placeholder={tl('可选：填写大厅描述（如玩法、版本），展示在广场上', 'Optional: lobby description (mode, version) shown in the plaza')}
+            placeholder={tl(
+              '可选：填写大厅描述（如玩法、版本），展示在广场上',
+              'Optional: lobby description (mode, version) shown in the plaza'
+            )}
             autoSize={{ minRows: 2, maxRows: 4 }}
             maxLength={100}
           />
@@ -126,19 +162,36 @@ export const HostPanel: React.FC<HostPanelProps> = ({ visible, onClose }) => {
         <div>
           <Text strong>{tl('大厅公告', 'Lobby Announcement')}</Text>
           <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 8 }}>
-            {tl('公告会在所有成员的大厅顶部以滚动条形式展示，新加入的玩家也会自动看到（适合写玩法规则、服务器地址等）。', 'The announcement scrolls at the top of every member\u2019s lobby, including newcomers.')}
+            {tl(
+              '公告会在所有成员的大厅顶部以滚动条形式展示，新加入的玩家也会自动看到（适合写玩法规则、服务器地址等）。',
+              'The announcement scrolls at the top of every member\u2019s lobby, including newcomers.'
+            )}
           </Paragraph>
           <TextArea
             value={announceDraft}
             onChange={(e) => setAnnounceDraft(e.target.value)}
-            placeholder={tl('输入公告内容，留空并发布可清除公告', 'Enter an announcement; publish empty to clear')}
+            placeholder={tl(
+              '输入公告内容，留空并发布可清除公告',
+              'Enter an announcement; publish empty to clear'
+            )}
             autoSize={{ minRows: 2, maxRows: 4 }}
             maxLength={200}
           />
           <Space style={{ marginTop: 10 }}>
-            <Button type="primary" onClick={publishAnnounce}>{tl('发布公告', 'Publish')}</Button>
+            <Button type="primary" onClick={publishAnnounce}>
+              {tl('发布公告', 'Publish')}
+            </Button>
             {announcement && (
-              <Button onClick={() => { setAnnounceDraft(''); setAnnouncement(''); void p2pChatService.sendControlMessage('announce', ''); message.success(tl('已清空公告', 'Announcement cleared')); }}>{tl('清空', 'Clear')}</Button>
+              <Button
+                onClick={() => {
+                  setAnnounceDraft('');
+                  setAnnouncement('');
+                  void p2pChatService.sendControlMessage('announce', '');
+                  message.success(tl('已清空公告', 'Announcement cleared'));
+                }}
+              >
+                {tl('清空', 'Clear')}
+              </Button>
             )}
           </Space>
         </div>

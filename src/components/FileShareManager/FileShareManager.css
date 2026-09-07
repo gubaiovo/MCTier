@@ -674,7 +674,7 @@
   padding: 32px;
   max-width: 400px;
   width: 90%;
-  box-shadow: 
+  box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -699,7 +699,8 @@
 }
 
 @keyframes iconPulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
   }
@@ -791,7 +792,11 @@
 
 /* 确保Modal内容可见 */
 .ant-modal-content {
-  background: linear-gradient(145deg, rgba(30, 30, 40, 0.98) 0%, rgba(20, 20, 30, 0.98) 100%) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(30, 30, 40, 0.98) 0%,
+    rgba(20, 20, 30, 0.98) 100%
+  ) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
 }
@@ -853,19 +858,30 @@ html[data-theme='light'] .sidebar-tab {
   border-color: rgba(24, 32, 43, 0.08);
 }
 
-html[data-theme='light'] .sidebar-tab:hover { background: #e8edf1; color: #18202b; }
-html[data-theme='light'] .sidebar-tab.active { background: #edf8e8; color: #3b8d1c; border-color: #9ed181; }
+html[data-theme='light'] .sidebar-tab:hover {
+  background: #e8edf1;
+  color: #18202b;
+}
+html[data-theme='light'] .sidebar-tab.active {
+  background: #edf8e8;
+  color: #3b8d1c;
+  border-color: #9ed181;
+}
 
 html[data-theme='light'] .file-share-container :where(.share-item, .file-item, .transfer-item) {
   background: #f7f9fb;
   border-color: rgba(24, 32, 43, 0.12);
 }
 
-html[data-theme='light'] .file-share-container :where(.share-name, .share-owner, .file-name, .transfer-name, .empty-text, h3, h4, p) {
+html[data-theme='light']
+  .file-share-container
+  :where(.share-name, .share-owner, .file-name, .transfer-name, .empty-text, h3, h4, p) {
   color: #18202b !important;
 }
 
-html[data-theme='light'] .file-share-container :where(.share-meta, .file-size, .transfer-meta, .empty-hint) {
+html[data-theme='light']
+  .file-share-container
+  :where(.share-meta, .file-size, .transfer-meta, .empty-hint) {
   color: #596574 !important;
 }
 
@@ -874,9 +890,17 @@ html[data-theme='light'] .custom-confirm-dialog {
   border: 1px solid rgba(24, 32, 43, 0.14);
   box-shadow: 0 18px 48px rgba(24, 32, 43, 0.2);
 }
-html[data-theme='light'] .confirm-title { color: #18202b; }
-html[data-theme='light'] .confirm-message { color: #596574; }
-html[data-theme='light'] .cancel-btn { background: #ffffff; color: #364151; border-color: #aab2bd; }
+html[data-theme='light'] .confirm-title {
+  color: #18202b;
+}
+html[data-theme='light'] .confirm-message {
+  color: #596574;
+}
+html[data-theme='light'] .cancel-btn {
+  background: #ffffff;
+  color: #364151;
+  border-color: #aab2bd;
+}
 
 html[data-theme='light'] .file-share-container ~ .ant-modal-root .ant-modal-content,
 html[data-theme='light'] .file-share-container .ant-modal-content {
@@ -888,7 +912,11 @@ html[data-theme='light'] .file-share-container .ant-modal-content {
 .file-share-modal .ant-btn {
   box-sizing: border-box;
   transform: none !important;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease !important;
 }
 
 .file-share-container .file-share-primary-btn,
@@ -961,7 +989,10 @@ html[data-theme='light'] .file-share-container .sidebar-tab {
   background: #ffffff;
   border-color: rgba(24, 32, 43, 0.1);
   color: #596574;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease !important;
 }
 
 html[data-theme='light'] .file-share-container .sidebar-tab:hover {
@@ -976,7 +1007,9 @@ html[data-theme='light'] .file-share-container .sidebar-tab.active {
   color: #2f7d12;
 }
 
-html[data-theme='light'] .file-share-container :is(.share-list, .file-browser, .transfer-list, .file-list) {
+html[data-theme='light']
+  .file-share-container
+  :is(.share-list, .file-browser, .transfer-list, .file-list) {
   background: #ffffff;
 }
 
@@ -984,11 +1017,16 @@ html[data-theme='light'] .file-share-container :is(.share-item, .file-item, .tra
   background: #f7f9fb;
   border-color: rgba(24, 32, 43, 0.13);
   color: #18202b;
-  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease !important;
 }
 
 html[data-theme='light'] .file-share-container :is(.share-item, .file-item, .transfer-item):hover,
-html[data-theme='light'] .file-share-container :is(.share-item.clickable, .file-item.clickable, .transfer-item.clickable):hover {
+html[data-theme='light']
+  .file-share-container
+  :is(.share-item.clickable, .file-item.clickable, .transfer-item.clickable):hover {
   background: #f1f5f8;
   border-color: rgba(24, 32, 43, 0.2);
   box-shadow: none;
@@ -999,11 +1037,15 @@ html[data-theme='light'] .file-share-container :is(.share-name, .file-name, .tra
   color: #18202b !important;
 }
 
-html[data-theme='light'] .file-share-container :is(.share-meta, .file-meta, .transfer-meta, .current-path, .loading-state) {
+html[data-theme='light']
+  .file-share-container
+  :is(.share-meta, .file-meta, .transfer-meta, .current-path, .loading-state) {
   color: #596574 !important;
 }
 
-html[data-theme='light'] .file-share-container :is(.share-icon, .file-icon, .transfer-icon, .file-item svg, .empty-state svg) {
+html[data-theme='light']
+  .file-share-container
+  :is(.share-icon, .file-icon, .transfer-icon, .file-item svg, .empty-state svg) {
   color: #687585;
 }
 
@@ -1032,7 +1074,10 @@ html[data-theme='light'] .file-share-container .subtab {
   background: #f1f4f7;
   border: 1px solid transparent;
   color: #596574;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease !important;
 }
 
 html[data-theme='light'] .file-share-container .subtab:hover {

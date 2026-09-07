@@ -89,7 +89,7 @@
 
 .lobby-settings-form .ant-input:focus,
 .lobby-settings-form .ant-input-textarea:focus {
-  border-color: #4CAF50;
+  border-color: #4caf50;
   background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
 }
@@ -143,7 +143,7 @@
   line-height: 1.6;
   padding: 12px;
   background: rgba(76, 175, 80, 0.1);
-  border-left: 3px solid #4CAF50;
+  border-left: 3px solid #4caf50;
   border-radius: 4px;
   margin-top: -8px;
   margin-bottom: 16px;
@@ -205,7 +205,7 @@
 }
 
 .lobby-settings-btn-save {
-  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
   color: #fff;
   box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }
@@ -225,7 +225,7 @@
 }
 
 .lobby-settings-toggle .ant-switch-checked {
-  background: #4CAF50;
+  background: #4caf50;
 }
 
 /* 表单验证错误样式 */
@@ -243,7 +243,6 @@
 .lobby-settings-form .ant-input-textarea-status-error:focus {
   box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2) !important;
 }
-
 
 /* 高级配置按钮 */
 .advanced-config-btn-wrapper {
@@ -301,7 +300,7 @@
 }
 
 .use-global-config-switch .ant-switch-checked {
-  background: #4CAF50;
+  background: #4caf50;
 }
 
 /* 全局配置提示 */
@@ -365,7 +364,7 @@
 }
 
 .lobby-settings-form .ant-input-number-focused {
-  border-color: #4CAF50;
+  border-color: #4caf50;
   background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
 }
@@ -421,8 +420,14 @@
   padding: 10px 12px;
   margin-bottom: 12px;
 }
-.lobby-vc-hint strong { color: rgba(126, 211, 33, 0.95); }
-.lobby-vc-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.lobby-vc-hint strong {
+  color: rgba(126, 211, 33, 0.95);
+}
+.lobby-vc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .lobby-vc-chip {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -433,9 +438,12 @@
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.lobby-vc-chip:hover { background: rgba(126, 211, 33, 0.15); border-color: rgba(126, 211, 33, 0.4); }
+.lobby-vc-chip:hover {
+  background: rgba(126, 211, 33, 0.15);
+  border-color: rgba(126, 211, 33, 0.4);
+}
 .lobby-vc-chip.active {
-  background: #52C41A;
+  background: #52c41a;
   border-color: transparent;
   color: #fff;
   font-weight: 600;
@@ -480,9 +488,21 @@ html[data-theme='light'] .lobby-settings-modal .lobby-vc-hint {
 }
 
 /* ==================== 网络配置分区标题 ==================== */
-.lobby-config-section-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.lobby-config-section-title { font-size: 15px; font-weight: 600; color: rgba(255, 255, 255, 0.92); }
-.lobby-config-section-note { font-size: 11px; color: rgba(255, 210, 74, 0.85); }
+.lobby-config-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.lobby-config-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+.lobby-config-section-note {
+  font-size: 11px;
+  color: rgba(255, 210, 74, 0.85);
+}
 
 /* ==================== EasyTier 网络配置容器（与上方语音设置区分开） ==================== */
 .lobby-config-box {

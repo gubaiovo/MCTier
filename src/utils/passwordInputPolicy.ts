@@ -6,8 +6,9 @@
  * 清空 `GTK_IM_MODULE` 只能缓解一部分环境，Debian 13 + KDE Plasma 6 Wayland 上实测仍会复现
  * （见 issue #42 的实机反馈）。
  *
- * 因此 Linux 端不使用原生密码框，改用普通文本框 + CSS `-webkit-text-security` 遮罩，
- * 从引擎层规避这条冲突路径；Windows（WebView2）不受影响，继续用原生密码框，
+ * macOS 的 WKWebView 还可能在 secure text field 首次聚焦时卡住 first-responder，
+ * 直到用户点击显隐按钮后才恢复。因此 Linux 与 macOS 都不使用原生密码框，改用
+ * 普通文本框 + CSS `-webkit-text-security` 遮罩；Windows（WebView2）不受影响，继续用原生密码框，
  * 以保留浏览器自带的密码语义（避免密码被输入法候选词、拼写检查或自动填充记录）。
  *
  * 判定只依赖 User-Agent 字符串，便于在无浏览器环境下单测。
@@ -22,13 +23,21 @@ export function isLinuxUserAgent(userAgent: unknown): boolean {
   return /\bLinux\b|\bX11\b/i.test(userAgent);
 }
 
+/** 该运行环境是否为 macOS（不含 iPhone/iPad WebView）。 */
+export function isMacUserAgent(userAgent: unknown): boolean {
+  if (typeof userAgent !== 'string' || userAgent.length === 0) return false;
+  return (
+    /\bMacintosh\b|\bMac OS X\b/i.test(userAgent) && !/\b(?:iPhone|iPad|iPod)\b/i.test(userAgent)
+  );
+}
+
 /**
  * 是否应避免使用原生 `<input type="password">`。
  *
- * 仅 Linux 需要规避；其余平台一律使用原生密码框。
+ * Linux 与 macOS 需要规避；其余平台一律使用原生密码框。
  */
 export function shouldAvoidNativePasswordInput(userAgent: unknown): boolean {
-  return isLinuxUserAgent(userAgent);
+  return isLinuxUserAgent(userAgent) || isMacUserAgent(userAgent);
 }
 
 /** 取当前运行环境的判定结果；非浏览器环境（如单测）视为不需要规避。 */

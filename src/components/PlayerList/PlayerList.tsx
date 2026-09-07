@@ -156,7 +156,11 @@ export const PlayerList: React.FC = () => {
                     transition={{ duration: 0.2 }}
                   >
                     <div className="player-volume-slider-wrapper">
-                      <Tooltip title={isMuted ? tl('取消静音', 'Unmute') : tl('静音该玩家', 'Mute this player')}>
+                      <Tooltip
+                        title={
+                          isMuted ? tl('取消静音', 'Unmute') : tl('静音该玩家', 'Mute this player')
+                        }
+                      >
                         <motion.div
                           className="player-volume-icon-inline"
                           whileHover={{ scale: 1.1 }}

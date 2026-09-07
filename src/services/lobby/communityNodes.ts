@@ -66,7 +66,10 @@ export function validateCommunityNodeAddress(address: string): string | null {
 }
 
 /** 把 Unix 秒换算成「距今多久」的中文/英文描述 */
-export function describeNodeFreshness(lastOkAt: number, nowSecs = Math.floor(Date.now() / 1000)): {
+export function describeNodeFreshness(
+  lastOkAt: number,
+  nowSecs = Math.floor(Date.now() / 1000)
+): {
   offlineSecs: number;
   /** 距离被服务器自动移除还剩多少秒（在线节点为 null） */
   secsUntilRemoval: number | null;
@@ -92,7 +95,7 @@ function requestOnce<T>(
   payload: Record<string, unknown>,
   expectType: string,
   parse: (msg: any) => T,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<T> {
   const url = signalingServer?.trim() || DEFAULT_SIGNALING;
   // 与公开广场一致：自定义信令地址属于跨信任边界输入，先过校验再连接，
@@ -111,7 +114,11 @@ function requestOnce<T>(
     }
 
     const cleanup = () => {
-      try { ws.close(); } catch { /* ignore */ }
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
     };
 
     const finish = (fn: () => void) => {
@@ -172,10 +179,12 @@ function normalizeNode(raw: any): CommunityNode | null {
   // 'custom' 是本地 UI 的占位值，不能由服务器数据冒充。
   if (address === 'custom' || address.length > 128 || !isSafeServerNode(address)) return null;
   const submitter = sanitizeUntrustedText(raw?.submitter, 24).trim() || undefined;
-  const toSecs = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-  const latency = typeof raw?.latencyMs === 'number' && Number.isFinite(raw.latencyMs) && raw.latencyMs >= 0
-    ? Math.round(raw.latencyMs)
-    : undefined;
+  const toSecs = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+  const latency =
+    typeof raw?.latencyMs === 'number' && Number.isFinite(raw.latencyMs) && raw.latencyMs >= 0
+      ? Math.round(raw.latencyMs)
+      : undefined;
   return {
     name,
     address,
@@ -192,7 +201,10 @@ function normalizeNode(raw: any): CommunityNode | null {
  * @param signalingServer 可选，自定义信令服务器地址
  * @param timeoutMs 超时时间（毫秒）
  */
-export function fetchCommunityNodes(signalingServer?: string, timeoutMs = 8000): Promise<CommunityNode[]> {
+export function fetchCommunityNodes(
+  signalingServer?: string,
+  timeoutMs = 8000
+): Promise<CommunityNode[]> {
   return requestOnce(
     signalingServer,
     { type: 'community-node-list-request' },
@@ -203,7 +215,7 @@ export function fetchCommunityNodes(signalingServer?: string, timeoutMs = 8000):
         .map(normalizeNode)
         .filter((n: CommunityNode | null): n is CommunityNode => n !== null);
     },
-    timeoutMs,
+    timeoutMs
   );
 }
 
@@ -215,7 +227,7 @@ export function fetchCommunityNodes(signalingServer?: string, timeoutMs = 8000):
 export function submitCommunityNode(
   node: { name: string; address: string; submitter?: string },
   signalingServer?: string,
-  timeoutMs = 15000,
+  timeoutMs = 15000
 ): Promise<SubmitCommunityNodeResult> {
   const payload: Record<string, unknown> = {
     type: 'community-node-submit',
@@ -232,8 +244,8 @@ export function submitCommunityNode(
     (msg) => ({
       ok: msg.ok === true,
       message: typeof msg.message === 'string' ? msg.message : '',
-      node: msg.node ? normalizeNode(msg.node) ?? undefined : undefined,
+      node: msg.node ? (normalizeNode(msg.node) ?? undefined) : undefined,
     }),
-    timeoutMs,
+    timeoutMs
   );
 }

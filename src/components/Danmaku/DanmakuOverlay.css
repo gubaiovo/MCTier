@@ -13,8 +13,10 @@
   align-items: center;
   white-space: nowrap;
   font-weight: 800;
-  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.7);
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 4px rgba(0, 0, 0, 0.7);
   will-change: transform;
   transform: translateX(100vw);
   animation-name: danmaku-move;
@@ -91,6 +93,10 @@
 }
 
 @keyframes danmaku-move {
-  from { transform: translateX(100vw); }
-  to { transform: translateX(-110%); }
+  from {
+    transform: translateX(100vw);
+  }
+  to {
+    transform: translateX(-110%);
+  }
 }

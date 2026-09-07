@@ -14,6 +14,7 @@ their licenses, upstream sources, versions and modification status.
 | 组件 | 来源 | 版本 | Commit | 许可证 | 是否修改 |
 | --- | --- | --- | --- | --- | --- |
 | EasyTier (Windows `easytier-core.exe` / `easytier-cli.exe`) | https://github.com/EasyTier/EasyTier | v2.5.0 | `88a45d115670631dfe6a05ba192387d615ddb95b` | LGPL-3.0 | 是 / Yes（见 §8） |
+| EasyTier (macOS `easytier-core` / `easytier-cli`, x86_64 + aarch64) | https://github.com/EasyTier/EasyTier | v2.6.4 | `8428a89d2dabc94c97d370ec607c6ca142473626` | LGPL-3.0 | 否 / No |
 | EasyTier (Android `libeasytier_ffi.so` / `libeasytier_android_jni.so`) | https://github.com/EasyTier/EasyTier | 以 v2.6.0 为补丁基线 / patch baseline v2.6.0 | 基线 `79b562cdc9f1dc3f52195a47a02cf83542c225ab` + 本仓库补丁 | LGPL-3.0 | 是 / Yes（见 §5） |
 | Wintun (`wintun.dll`) | https://www.wintun.net | 0.14.1 | — | Wintun Prebuilt Binaries License | 否 / No（见 §7） |
 | WinDivert (`WinDivert64.sys`) | https://reqrypt.org/windivert.html | 2.2.2 | — | LGPL-3.0（双许可中所选分支） | 否 / No（见 §7） |
@@ -66,7 +67,7 @@ MCTier 不对 EasyTier 的版权主体作任何额外主张。
 
 LGPL-3.0 要求许可证文本随发行版一同提供，因此两端均**不依赖联网**即可读到全文：
 
-- **Windows 桌面端**：`src-tauri/tauri.conf.json` 的 `bundle.resources` 将 `LICENSE`、
+- **Windows / macOS 桌面端**：`src-tauri/tauri.conf.json` 的 `bundle.resources` 将 `LICENSE`、
   `THIRD_PARTY_NOTICES.md`、`licenses/*`（含 LGPL-3.0 与 GPL-3.0 全文）以及 Android 端的
   EasyTier 补丁一并打进安装包的 `licenses/` 目录；应用「关于」窗口另有第三方组件声明区块。
 - **Android 端**：`MCTier-Android/app/build.gradle.kts` 的 `syncLicenseAssets` 任务在构建时
@@ -78,7 +79,9 @@ LGPL-3.0 要求许可证文本随发行版一同提供，因此两端均**不依
 
 ---
 
-## 4. Windows 端 EasyTier 集成 / Windows Integration
+## 4. 桌面端 EasyTier 集成 / Desktop Integration
+
+### 4.1 Windows
 
 **集成方式：独立进程（未链接 EasyTier 库）**
 
@@ -107,6 +110,25 @@ MCTier 发布包中分发的 EasyTier 二进制（构建时取自 `src-tauri/res
 的 commit `88a45d115670631dfe6a05ba192387d615ddb95b` 对应。
 
 任何人可通过以下方式独立复核：下载上述官方发布包，对同名文件计算 SHA-256 并比对。
+
+### 4.2 macOS (Intel / Apple Silicon)
+
+macOS 与 Windows 一样，通过独立子进程运行 EasyTier，并不把 EasyTier 作为 Rust crate 或
+动态库链接进 MCTier。构建脚本 `scripts/fetch-macos-binaries.sh` 从 EasyTier 官方 v2.6.4
+Release 获取与目标架构匹配的压缩包，同时校验压缩包及所使用文件的 SHA-256；
+`resource_manager.rs` 在运行时将内嵌文件释放到应用数据目录并设置 Unix 执行权限。
+
+| 架构 / 文件 | SHA-256 |
+| --- | --- |
+| aarch64 archive `easytier-macos-aarch64-v2.6.4.zip` | `4BE1882D1AA36D31C1D6BA0596F2CF8A097E371F8DA124212324B2E0F8DF7E4B` |
+| aarch64 `easytier-core` | `6478A522B8637E2BD2AD3ADAD66ED04A71B35F832BD9889BFFAF1863262F6DDF` |
+| aarch64 `easytier-cli` | `C700C4FEE1A7F35FCC1A048520D40CEA477B6CF7BF6D75F423FE1642C1EBC75D` |
+| x86_64 archive `easytier-macos-x86_64-v2.6.4.zip` | `89FC28A6E6995259D76CE3F11775220E8A21C760E94DF91A6A9DB30A69B6982E` |
+| x86_64 `easytier-core` | `DDF95A012599E424A632105FC3DC87D15C0A2DAAF30A20B71AA95C8F896F9A2F` |
+| x86_64 `easytier-cli` | `1E3353FAB30614BFB0277B05C8FF5F478394448E678E5A868AC09AF3EF9CCF8B` |
+
+以上文件均来自上游官方发布包，未经修改。Intel 与 Apple Silicon 安装包分别内嵌各自架构
+的 EasyTier 文件，不制作混合架构的 EasyTier 二进制。
 
 ---
 
@@ -183,8 +205,10 @@ tag 为基线**的完整差异记录，其中同时包含「上游中间提交�
 使用者**无需联系 MCTier 作者**即可获得 EasyTier 对应源码：
 
 1. **上游源码**：https://github.com/EasyTier/EasyTier
-   - Windows 端：tag `v2.5.0`
+   - Windows 桌面端：tag `v2.5.0`
      （https://github.com/EasyTier/EasyTier/releases/tag/v2.5.0）
+   - macOS 桌面端：tag `v2.6.4`
+     （https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4）
    - Android 端基线：tag `v2.6.0`
      （https://github.com/EasyTier/EasyTier/releases/tag/v2.6.0）
 2. **MCTier 所作修改**：本仓库 `patches/easytier-2.6.0-mctier-android.patch`

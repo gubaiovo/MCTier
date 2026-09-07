@@ -158,9 +158,10 @@ a,
   position: relative;
   font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
   /* 整体渐变从绿到棕 */
-  background: linear-gradient(135deg, 
-    #7ed321 0%, 
-    #9ee84a 20%, 
+  background: linear-gradient(
+    135deg,
+    #7ed321 0%,
+    #9ee84a 20%,
     #b8f569 35%,
     #d4a574 65%,
     #c89a5e 80%,
@@ -179,20 +180,18 @@ a,
 .main-window.gpu-rendering-disabled .main-window-title {
   animation: none;
   filter: drop-shadow(0 0 12px rgba(126, 211, 33, 0.5))
-          drop-shadow(0 0 20px rgba(212, 165, 116, 0.3))
-          drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    drop-shadow(0 0 20px rgba(212, 165, 116, 0.3)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 @keyframes titleShine {
-  0%, 100% {
+  0%,
+  100% {
     filter: drop-shadow(0 0 12px rgba(126, 211, 33, 0.5))
-            drop-shadow(0 0 20px rgba(212, 165, 116, 0.3))
-            drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+      drop-shadow(0 0 20px rgba(212, 165, 116, 0.3)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   }
   50% {
     filter: drop-shadow(0 0 18px rgba(126, 211, 33, 0.7))
-            drop-shadow(0 0 28px rgba(212, 165, 116, 0.5))
-            drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
+      drop-shadow(0 0 28px rgba(212, 165, 116, 0.5)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
   }
 }
 
@@ -255,7 +254,10 @@ a,
   font-size: 15px !important;
   font-weight: 700 !important;
   border-radius: 7px !important;
-  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease !important;
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease !important;
   border: none !important;
   position: relative;
   overflow: hidden;
@@ -435,7 +437,9 @@ a,
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.68);
-  transition: background-color 0.14s ease, color 0.14s ease;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

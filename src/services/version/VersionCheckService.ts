@@ -3,7 +3,12 @@
  * 从 Gitee API 获取最新版本信息并与当前版本对比
  */
 
-import { compareVersions, isReleaseVersion, newestVersionTag, normalizeReleaseVersion } from './versionPolicy';
+import {
+  compareVersions,
+  isReleaseVersion,
+  newestVersionTag,
+  normalizeReleaseVersion,
+} from './versionPolicy';
 import { getVersion } from '@tauri-apps/api/app';
 
 interface GiteeTag {
@@ -35,7 +40,9 @@ function isTrustedGiteeTag(value: unknown): value is GiteeTag {
     isReleaseVersion(tag.name) &&
     typeof tag.commit?.sha === 'string' &&
     /^[0-9a-f]{40}$/i.test(tag.commit.sha) &&
-    (tag.message === undefined || (typeof tag.message === 'string' && new TextEncoder().encode(tag.message).length <= MAX_RELEASE_NOTES_BYTES))
+    (tag.message === undefined ||
+      (typeof tag.message === 'string' &&
+        new TextEncoder().encode(tag.message).length <= MAX_RELEASE_NOTES_BYTES))
   );
 }
 
@@ -78,7 +85,8 @@ async function readLimitedResponse(response: Response, maxBytes: number): Promis
 
 class VersionCheckService {
   // Keep the source fixed to the official repository; update packages are never downloaded from this response.
-  private readonly GITEE_API_URL = 'https://gitee.com/api/v5/repos/peng-minghang/mctier/tags?per_page=100&page=1';
+  private readonly GITEE_API_URL =
+    'https://gitee.com/api/v5/repos/peng-minghang/mctier/tags?per_page=100&page=1';
   private readonly VERSION_CHECK_KEY = 'mctier_version_check_shown';
 
   /**
@@ -135,14 +143,18 @@ class VersionCheckService {
       const response = await fetch(this.GITEE_API_URL, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         redirect: 'error',
         signal: controller.signal,
       });
 
       if (!response.ok) {
-        console.error('❌ [VersionCheckService] API 请求失败:', response.status, response.statusText);
+        console.error(
+          '❌ [VersionCheckService] API 请求失败:',
+          response.status,
+          response.statusText
+        );
         return null;
       }
 
@@ -177,14 +189,18 @@ class VersionCheckService {
         console.error('❌ [VersionCheckService] 当前版本号无效，停止更新提示');
         return null;
       }
-      
+
       console.log('📦 [VersionCheckService] 最新版本:', latestVersion);
       console.log('📦 [VersionCheckService] 当前版本:', currentVersion);
 
       // 比较版本号
       const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
-      
-      console.log(hasUpdate ? '🎉 [VersionCheckService] 发现新版本！' : '✅ [VersionCheckService] 当前已是最新版本');
+
+      console.log(
+        hasUpdate
+          ? '🎉 [VersionCheckService] 发现新版本！'
+          : '✅ [VersionCheckService] 当前已是最新版本'
+      );
 
       return {
         latestVersion,
@@ -210,10 +226,10 @@ class VersionCheckService {
       return message
         .slice(0, MAX_RELEASE_NOTES_BYTES)
         .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
         .slice(0, MAX_RELEASE_NOTE_LINES)
-        .map(line => {
+        .map((line) => {
           // 如果行以"- "开头，去掉这个前缀
           if (line.startsWith('- ')) {
             return line.substring(2).slice(0, MAX_RELEASE_NOTE_LINE_LENGTH);
@@ -225,7 +241,6 @@ class VersionCheckService {
       return [];
     }
   }
-
 }
 
 export const versionCheckService = new VersionCheckService();

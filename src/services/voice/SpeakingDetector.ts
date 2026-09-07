@@ -77,7 +77,9 @@ class SpeakingDetector {
       try {
         entry.source.disconnect();
         entry.analyser.disconnect();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       this.entries.delete(playerId);
       if (entry.speaking && this.callback) {
         this.callback(playerId, false);

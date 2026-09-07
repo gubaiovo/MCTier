@@ -36,15 +36,20 @@ const findTitledElement = (target: HTMLElement): HTMLElement | null => {
 };
 
 const isComponentTooltipTarget = (target: HTMLElement, titledElement: HTMLElement): boolean => {
-  if (target.closest(COMPONENT_TOOLTIP_SELECTOR) || titledElement.closest(COMPONENT_TOOLTIP_SELECTOR)) {
+  if (
+    target.closest(COMPONENT_TOOLTIP_SELECTOR) ||
+    titledElement.closest(COMPONENT_TOOLTIP_SELECTOR)
+  ) {
     return true;
   }
 
   // Ant Design puts the visible field label and its help icon in the same
   // <label title="...">. That title only repeats the label while the icon owns
   // the real explanatory Tooltip, so the global tooltip must ignore the label.
-  return titledElement.matches('.ant-form-item-label > label')
-    && Boolean(titledElement.querySelector('.ant-form-item-tooltip'));
+  return (
+    titledElement.matches('.ant-form-item-label > label') &&
+    Boolean(titledElement.querySelector('.ant-form-item-tooltip'))
+  );
 };
 
 export const GlobalTooltip: React.FC = () => {
@@ -101,9 +106,7 @@ export const GlobalTooltip: React.FC = () => {
       const el = findTitledElement(target);
       if (!el) return;
       const text = el.getAttribute('title');
-      const isComponentOwned = () => Boolean(
-        isComponentTooltipTarget(target, el)
-      );
+      const isComponentOwned = () => Boolean(isComponentTooltipTarget(target, el));
       const componentOwned = isComponentOwned();
       const optedOut = Boolean(el.closest('[data-mct-tooltip="off"]'));
       if (!shouldHandleGlobalTooltip({ title: text, componentOwned, optedOut })) {

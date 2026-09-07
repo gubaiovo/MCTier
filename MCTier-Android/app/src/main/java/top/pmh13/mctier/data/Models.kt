@@ -203,6 +203,7 @@ data class SignalingEnvelope(
     val shareId: String? = null,
     val hasPassword: Boolean? = null,
     val password: String? = null,
+    val message: String? = null,
     val error: String? = null,
     val reason: String? = null,
     val offer: SdpPayload? = null,

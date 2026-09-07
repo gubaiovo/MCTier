@@ -38,6 +38,17 @@ MCTier-Android/color_sample.txt
 # Tauri / Rust
 src-tauri/target
 src-tauri/WixTools
+src-tauri/resources/binaries/easytier-core
+src-tauri/resources/binaries/easytier-cli
+src-tauri/resources/binaries/easytier-core-*-apple-darwin
+src-tauri/resources/binaries/easytier-cli-*-apple-darwin
+
+# Local signing material (CI reconstructs these from encrypted secrets)
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore.properties
 
 # Compiled executables
 *.exe

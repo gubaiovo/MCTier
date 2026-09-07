@@ -10,11 +10,11 @@ import { emitTo } from '@tauri-apps/api/event';
 
 export interface DanmakuConfig {
   enabled: boolean;
-  fontSize: number;   // 字号 px
-  speed: number;      // 滚动速度 px/s
-  opacity: number;    // 不透明度 0~1
-  tracks: number;     // 弹幕轨道数（行数）
-  color: string;      // 弹幕文字颜色
+  fontSize: number; // 字号 px
+  speed: number; // 滚动速度 px/s
+  opacity: number; // 不透明度 0~1
+  tracks: number; // 弹幕轨道数（行数）
+  color: string; // 弹幕文字颜色
 }
 
 export const DEFAULT_DANMAKU_CONFIG: DanmakuConfig = {
@@ -85,7 +85,11 @@ class DanmakuService {
   async setConfig(patch: Partial<DanmakuConfig>): Promise<void> {
     const prevEnabled = this.config.enabled;
     this.config = { ...this.config, ...patch };
-    try { localStorage.setItem(LS_KEY, JSON.stringify(this.config)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(this.config));
+    } catch {
+      /* ignore */
+    }
     // 启用状态变化时开/关窗口
     if (this.config.enabled !== prevEnabled) {
       if (this.config.enabled) await this.openWindow();
@@ -94,11 +98,19 @@ class DanmakuService {
   }
 
   async openWindow(): Promise<void> {
-    try { await invoke('open_danmaku_window'); } catch (e) { console.warn('打开弹幕窗口失败', e); }
+    try {
+      await invoke('open_danmaku_window');
+    } catch (e) {
+      console.warn('打开弹幕窗口失败', e);
+    }
   }
 
   async closeWindow(): Promise<void> {
-    try { await invoke('close_danmaku_window'); } catch (e) { console.warn('关闭弹幕窗口失败', e); }
+    try {
+      await invoke('close_danmaku_window');
+    } catch (e) {
+      console.warn('关闭弹幕窗口失败', e);
+    }
   }
 
   /** 进入大厅时按配置决定是否开启弹幕窗 */
@@ -111,7 +123,7 @@ class DanmakuService {
   async push(text: string, opts?: DanmakuPushOptions | string): Promise<void> {
     if (!this.config.enabled) return;
     // 兼容旧调用：第二参数为字符串时视为 color
-    const o: DanmakuPushOptions = typeof opts === 'string' ? { color: opts } : (opts || {});
+    const o: DanmakuPushOptions = typeof opts === 'string' ? { color: opts } : opts || {};
     const isImage = o.kind === 'image';
     if (!isImage && !text.trim()) return;
     const payload: DanmakuPayload = {
@@ -144,10 +156,14 @@ class DanmakuService {
       tracks: this.config.tracks,
     };
     // 等窗口就绪
-    setTimeout(() => { void emitTo('danmaku', 'danmaku-msg', payload); }, 350);
+    setTimeout(() => {
+      void emitTo('danmaku', 'danmaku-msg', payload);
+    }, 350);
     // 若未启用，预览几秒后自动关闭
     if (!this.config.enabled) {
-      setTimeout(() => { void this.closeWindow(); }, 6000);
+      setTimeout(() => {
+        void this.closeWindow();
+      }, 6000);
     }
   }
 }

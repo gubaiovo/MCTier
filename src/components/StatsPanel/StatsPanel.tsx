@@ -8,7 +8,13 @@ import { Modal, Empty, Button, App } from 'antd';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { tl } from '../../i18n';
-import { statsService, formatDuration, getBucketLabels, type ComputedStats, type SessionRecord } from '../../services/stats/statsService';
+import {
+  statsService,
+  formatDuration,
+  getBucketLabels,
+  type ComputedStats,
+  type SessionRecord,
+} from '../../services/stats/statsService';
 import './StatsPanel.css';
 
 interface StatsPanelProps {
@@ -21,7 +27,8 @@ const fmtDate = (ts: number) => (ts > 0 ? new Date(ts).toLocaleDateString() : '�
 /** 房主/成员占比环形图 */
 const Donut: React.FC<{ host: number; member: number }> = ({ host, member }) => {
   const total = host + member;
-  const r = 38, c = 2 * Math.PI * r;
+  const r = 38,
+    c = 2 * Math.PI * r;
   const hostFrac = total > 0 ? host / total : 0;
   const hostLen = c * hostFrac;
   return (
@@ -30,21 +37,46 @@ const Donut: React.FC<{ host: number; member: number }> = ({ host, member }) => 
         <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="12" />
         {total > 0 && (
           <>
-            <circle cx="50" cy="50" r={r} fill="none" stroke="#1668dc" strokeWidth="12"
-              strokeDasharray={`${c} ${c}`} strokeLinecap="round" transform="rotate(-90 50 50)" />
-            <motion.circle cx="50" cy="50" r={r} fill="none" stroke="#52c41a" strokeWidth="12"
-              strokeLinecap="round" transform="rotate(-90 50 50)"
+            <circle
+              cx="50"
+              cy="50"
+              r={r}
+              fill="none"
+              stroke="#1668dc"
+              strokeWidth="12"
+              strokeDasharray={`${c} ${c}`}
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
+            />
+            <motion.circle
+              cx="50"
+              cy="50"
+              r={r}
+              fill="none"
+              stroke="#52c41a"
+              strokeWidth="12"
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
               initial={{ strokeDasharray: `0 ${c}` }}
               animate={{ strokeDasharray: `${hostLen} ${c - hostLen}` }}
-              transition={{ duration: 0.7, ease: 'easeOut' }} />
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+            />
           </>
         )}
-        <text x="50" y="48" textAnchor="middle" className="stats-donut-num">{total}</text>
-        <text x="50" y="64" textAnchor="middle" className="stats-donut-label">{tl('总场次', 'Total')}</text>
+        <text x="50" y="48" textAnchor="middle" className="stats-donut-num">
+          {total}
+        </text>
+        <text x="50" y="64" textAnchor="middle" className="stats-donut-label">
+          {tl('总场次', 'Total')}
+        </text>
       </svg>
       <div className="stats-donut-legend">
-        <div><span className="dot" style={{ background: '#52c41a' }} /> {tl('房主', 'Host')} {host}</div>
-        <div><span className="dot" style={{ background: '#1668dc' }} /> {tl('成员', 'Member')} {member}</div>
+        <div>
+          <span className="dot" style={{ background: '#52c41a' }} /> {tl('房主', 'Host')} {host}
+        </div>
+        <div>
+          <span className="dot" style={{ background: '#1668dc' }} /> {tl('成员', 'Member')} {member}
+        </div>
       </div>
     </div>
   );
@@ -57,7 +89,10 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
   const [sessions, setSessions] = useState<SessionRecord[]>(() => statsService.getSessions());
 
   useEffect(() => {
-    if (visible) { setStats(statsService.getStats()); setSessions(statsService.getSessions()); }
+    if (visible) {
+      setStats(statsService.getStats());
+      setSessions(statsService.getSessions());
+    }
   }, [visible]);
 
   const doClear = () => {
@@ -83,22 +118,42 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
   const maxB = Math.max(1, ...stats.buckets);
 
   return (
-    <Modal title={t('stats.title')} open={visible} onCancel={onClose} footer={null} width={540} centered className="stats-modal">
+    <Modal
+      title={t('stats.title')}
+      open={visible}
+      onCancel={onClose}
+      footer={null}
+      width={540}
+      centered
+      className="stats-modal"
+    >
       {!stats.hasData ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span style={{ color: 'rgba(255,255,255,0.55)' }}>{t('stats.empty')}</span>} />
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={<span style={{ color: 'rgba(255,255,255,0.55)' }}>{t('stats.empty')}</span>}
+        />
       ) : (
-        <motion.div className="stats-body" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div
+          className="stats-body"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <div className="stats-grid">
             <div className="stats-card stats-highlight">
               <div className="stats-val">{formatDuration(stats.totalOnlineMs)}</div>
               <div className="stats-label">{t('stats.totalOnline')}</div>
             </div>
             <div className="stats-card">
-              <div className="stats-val">{stats.maxSessionMs > 0 ? formatDuration(stats.maxSessionMs) : '—'}</div>
+              <div className="stats-val">
+                {stats.maxSessionMs > 0 ? formatDuration(stats.maxSessionMs) : '—'}
+              </div>
               <div className="stats-label">{t('stats.maxSession')}</div>
             </div>
             <div className="stats-card">
-              <div className="stats-val">{stats.avgSessionMs > 0 ? formatDuration(stats.avgSessionMs) : '—'}</div>
+              <div className="stats-val">
+                {stats.avgSessionMs > 0 ? formatDuration(stats.avgSessionMs) : '—'}
+              </div>
               <div className="stats-label">{t('stats.avgSession')}</div>
             </div>
             <div className="stats-card">
@@ -122,9 +177,12 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
               {stats.buckets.map((v, i) => (
                 <div key={i} className="stats-bucket">
                   <div className="stats-bucket-bar-box">
-                    <motion.div className={`stats-bucket-bar ${i === stats.mostActiveBucket ? 'peak' : ''}`}
-                      initial={{ height: 0 }} animate={{ height: `${(v / maxB) * 100}%` }}
-                      transition={{ duration: 0.5, delay: i * 0.06 }} />
+                    <motion.div
+                      className={`stats-bucket-bar ${i === stats.mostActiveBucket ? 'peak' : ''}`}
+                      initial={{ height: 0 }}
+                      animate={{ height: `${(v / maxB) * 100}%` }}
+                      transition={{ duration: 0.5, delay: i * 0.06 }}
+                    />
                   </div>
                   <div className="stats-bucket-label">{getBucketLabels()[i]}</div>
                   <div className="stats-bucket-count">{v}</div>
@@ -132,8 +190,12 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
               ))}
             </div>
             <div className="stats-row-info">
-              <span>{t('stats.firstUse')}：{fmtDate(stats.firstUseTs)}</span>
-              <span>{t('stats.lastOnline')}：{fmtDate(stats.lastOnlineTs)}</span>
+              <span>
+                {t('stats.firstUse')}：{fmtDate(stats.firstUseTs)}
+              </span>
+              <span>
+                {t('stats.lastOnline')}：{fmtDate(stats.lastOnlineTs)}
+              </span>
             </div>
           </div>
 
@@ -144,11 +206,20 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
             ) : (
               <div className="stats-partner-list">
                 {stats.partners.slice(0, 10).map((p, idx) => (
-                  <motion.div key={p.name} className="stats-partner-item"
-                    initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.04 }}>
-                    <span className={`stats-partner-rank rank-${idx < 3 ? idx + 1 : 'n'}`}>{idx + 1}</span>
+                  <motion.div
+                    key={p.name}
+                    className="stats-partner-item"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                  >
+                    <span className={`stats-partner-rank rank-${idx < 3 ? idx + 1 : 'n'}`}>
+                      {idx + 1}
+                    </span>
                     <span className="stats-partner-name">{p.name}</span>
-                    <span className="stats-partner-count">{p.count} {tl('次', 'sessions')}</span>
+                    <span className="stats-partner-count">
+                      {p.count} {tl('次', 'sessions')}
+                    </span>
                   </motion.div>
                 ))}
               </div>
@@ -162,10 +233,16 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
             ) : (
               <div className="stats-partner-list">
                 {sessions.slice(0, 12).map((s, idx) => (
-                  <motion.div key={s.start} className="stats-partner-item"
-                    initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}>
+                  <motion.div
+                    key={s.start}
+                    className="stats-partner-item"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.03 }}
+                  >
                     <span className="stats-partner-name">
-                      {new Date(s.start).toLocaleString()} · {s.isHost ? tl('房主', 'Host') : tl('成员', 'Member')}
+                      {new Date(s.start).toLocaleString()} ·{' '}
+                      {s.isHost ? tl('房主', 'Host') : tl('成员', 'Member')}
                     </span>
                     <span className="stats-partner-count">{formatDuration(s.durationMs)}</span>
                   </motion.div>
@@ -175,7 +252,9 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ visible, onClose }) => {
           </div>
 
           <div className="stats-footer">
-            <Button size="small" danger onClick={handleClear}>{t('stats.clear')}</Button>
+            <Button size="small" danger onClick={handleClear}>
+              {t('stats.clear')}
+            </Button>
           </div>
         </motion.div>
       )}

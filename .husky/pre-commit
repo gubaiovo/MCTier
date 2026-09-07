@@ -1,11 +1,13 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 # 运行 lint-staged 检查暂存的文件
-npx lint-staged
+npx lint-staged || exit 1
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo is required for the Rust pre-commit checks" >&2
+  exit 1
+fi
 
 # 运行 Rust 格式化检查
-cd src-tauri && cargo fmt --check && cd ..
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check || exit 1
 
 # 运行 Rust clippy 检查
-cd src-tauri && cargo clippy -- -D warnings && cd ..
+cargo clippy --manifest-path src-tauri/Cargo.toml --lib --tests -- -D warnings

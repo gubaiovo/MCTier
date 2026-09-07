@@ -18,7 +18,8 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({ shareId, playerName 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const safeShareId = isSafeResourceId(shareId) ? shareId : '';
-  const safePlayerName = sanitizeUntrustedText(playerName, 64).trim() || tl('未知玩家', 'Unknown Player');
+  const safePlayerName =
+    sanitizeUntrustedText(playerName, 64).trim() || tl('未知玩家', 'Unknown Player');
 
   useEffect(() => {
     if (!safeShareId) {
@@ -33,33 +34,35 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({ shareId, playerName 
 
     const checkForStream = async () => {
       attempts++;
-      
+
       try {
         console.log(`⏳ [ScreenViewer] 尝试从服务获取流... (${attempts}/${maxAttempts})`);
-        
+
         // 从screenShareService获取流
         const stream = screenShareService.getRemoteStream(safeShareId);
-        
+
         if (stream && stream.active) {
           console.log('✅ [ScreenViewer] 从服务获取到屏幕流');
-          
+
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
             await videoRef.current.play();
             setIsLoading(false);
             console.log('✅ [ScreenViewer] 视频播放成功');
-            
+
             if (checkInterval) {
               clearInterval(checkInterval);
             }
             return;
           }
         }
-        
+
         // 如果超时
         if (attempts >= maxAttempts) {
           console.error('❌ [ScreenViewer] 等待屏幕流超时');
-          setError(tl('无法获取屏幕共享流，请重试', 'Unable to get the screen share stream, please retry'));
+          setError(
+            tl('无法获取屏幕共享流，请重试', 'Unable to get the screen share stream, please retry')
+          );
           setIsLoading(false);
           if (checkInterval) {
             clearInterval(checkInterval);
@@ -67,7 +70,7 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({ shareId, playerName 
         }
       } catch (err) {
         console.error('❌ [ScreenViewer] 获取流时出错:', err);
-        
+
         if (attempts >= maxAttempts) {
           setError(tl('获取屏幕共享流失败', 'Failed to get the screen share stream'));
           setIsLoading(false);
@@ -110,16 +113,32 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({ shareId, playerName 
         transition={{ duration: 0.3 }}
       >
         <div className="viewer-info">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
             <line x1="8" y1="21" x2="16" y2="21" />
             <line x1="12" y1="17" x2="12" y2="21" />
           </svg>
-          <span>{safePlayerName} {tl('的屏幕', '\'s Screen')}</span>
+          <span>
+            {safePlayerName} {tl('的屏幕', "'s Screen")}
+          </span>
         </div>
-        
+
         <button className="close-viewer-btn" onClick={handleClose} title={tl('关闭', 'Close')}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -137,7 +156,14 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({ shareId, playerName 
 
         {error && (
           <div className="viewer-error">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <circle cx="12" cy="12" r="10" />
               <path d="M12 8v5" strokeLinecap="round" />
               <circle cx="12" cy="16" r="0.8" fill="currentColor" stroke="none" />
@@ -160,4 +186,3 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({ shareId, playerName 
     </div>
   );
 };
-

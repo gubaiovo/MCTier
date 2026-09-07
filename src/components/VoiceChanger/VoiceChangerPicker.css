@@ -67,8 +67,13 @@
 }
 
 @keyframes vc-audition-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(150, 95, 50, 0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(150, 95, 50, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(150, 95, 50, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(150, 95, 50, 0);
+  }
 }
 
 html[data-theme='light'] .vc-picker-wrap {

@@ -236,7 +236,9 @@ docker compose -f docker-compose-http.yml logs -f
 
 ### Step 1: Prepare third-party binaries (required after the first clone)
 
-`src-tauri/src/modules/resource_manager.rs` embeds 4 third-party binaries at compile time via `include_bytes!`. They are large and subject to their own licenses, so they are not tracked in this repository. After cloning you must prepare them, otherwise `cargo build` fails because the files are missing.
+`src-tauri/src/modules/resource_manager.rs` embeds the target platform's EasyTier binaries at compile time; Windows also embeds `wintun.dll` and `WinDivert64.sys`. These files are large and subject to their own licenses, so they are not tracked in this repository. After cloning, run the script for your platform or `cargo build` will fail because the files are missing.
+
+Windows x64:
 
 ```powershell
 # 1) Download the freely redistributable driver files (wintun.dll / WinDivert64.sys)
@@ -246,9 +248,17 @@ docker compose -f docker-compose-http.yml logs -f
 .\scripts\build-easytier-npcap-free.ps1
 ```
 
+macOS (auto-detects Intel or Apple Silicon; `x86_64` / `arm64` may be passed explicitly):
+
+```bash
+./scripts/fetch-macos-binaries.sh
+```
+
 The first script downloads `easytier-windows-x86_64-v2.5.0.zip` from the official EasyTier release, verifies the SHA-256 of every file (aborting on any mismatch), then places them into `src-tauri/resources/binaries/`. Files that already exist and pass verification are skipped; pass `-Force` to re-fetch.
 
 The second script exists for a specific reason: the official `easytier-core.exe` build **statically imports** Npcap's `packet.dll`, and Npcap is not open source software — it may not be redistributed with other software without written permission from the Nmap Project. This script clones EasyTier v2.5.0 (the same commit, so no version bump), applies [patches/pnet_datalink-0.35.0-no-npcap.patch](patches/pnet_datalink-0.35.0-no-npcap.patch) to drop that import, and then parses the resulting PE import table as a hard gate. It requires `cargo` (MSVC toolchain), `protoc` and `libclang`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) section 8.
+
+The macOS script downloads the archive for the matching architecture from the official EasyTier v2.6.4 release, verifies both the archive and per-file SHA-256 values (aborting on any mismatch), and places the binaries in `src-tauri/resources/binaries/`.
 
 ### Step 2: Build
 ```bash
@@ -256,6 +266,8 @@ npm install
 npm run tauri dev
 # Build the Windows NSIS installer (recommended with the pinned Node runtime)
 npm run tauri build -- --bundles nsis --ci
+# Build a macOS DMG on a Mac of the matching architecture
+npm run tauri build -- --bundles dmg --ci
 ```
 
 Desktop release builds generate the NSIS installer only. This avoids processing the offline WebView2 installer twice when MSI is also enabled. The repository's one-click version update tool prepares the pinned Node runtime and uses the same NSIS arguments.
@@ -272,6 +284,8 @@ Debug or package Android:
 cd MCTier-Android
 gradlew.bat assembleDebug
 ```
+
+GitHub Actions builds Windows, macOS Intel, macOS Apple Silicon, and Android for pull requests, `master`, version tags, manual rebuilds, and nightly runs. See the [CI and release guide](docs/ci-release.md) for signing secrets, the Npcap redistribution gate, and release procedures.
 
 ## Sponsor
 
@@ -329,7 +343,8 @@ Source: https://github.com/EasyTier/EasyTier
 
 | Component | Platform | Version | Commit | License | Modified |
 | --- | --- | --- | --- | --- | --- |
-| EasyTier | Windows (separate process) | v2.5.0 | `88a45d11...` | LGPL-3.0 | No |
+| EasyTier | Windows (separate process) | v2.5.0 | `88a45d11...` | LGPL-3.0 | Yes (see Npcap patch) |
+| EasyTier | macOS (separate process) | v2.6.4 | `8428a89d...` | LGPL-3.0 | No |
 | EasyTier | Android (`.so` shared libs) | based on v2.6.0 | `79b562cd...` | LGPL-3.0 | Yes (see patch) |
 
 Related files:

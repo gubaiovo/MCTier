@@ -6,14 +6,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { webrtcClient } from '../services';
-import type {
-  AppState,
-  Lobby,
-  Player,
-  UserConfig,
-  WindowPosition,
-  ChatMessage,
-} from '../types';
+import type { AppState, Lobby, Player, UserConfig, WindowPosition, ChatMessage } from '../types';
 import { applyMessageRecall } from '../services/chat/recallPolicy';
 
 /** 共享待办项（双端字段名一致） */
@@ -44,7 +37,9 @@ interface AppStore {
   /** 版本错误信息 */
   versionError: { currentVersion: string; minimumVersion: string; downloadUrl: string } | null;
   /** 设置版本错误信息 */
-  setVersionError: (error: { currentVersion: string; minimumVersion: string; downloadUrl: string } | null) => void;
+  setVersionError: (
+    error: { currentVersion: string; minimumVersion: string; downloadUrl: string } | null
+  ) => void;
 
   // ==================== 大厅信息 ====================
   /** 当前大厅信息 */
@@ -311,7 +306,9 @@ export const useAppStore = create<AppStore>()(
         }
       },
 
-      setVersionError: (error: { currentVersion: string; minimumVersion: string; downloadUrl: string } | null) => {
+      setVersionError: (
+        error: { currentVersion: string; minimumVersion: string; downloadUrl: string } | null
+      ) => {
         set({ versionError: error }, false, 'setVersionError');
       },
 
@@ -330,18 +327,26 @@ export const useAppStore = create<AppStore>()(
         // 清除聊天消息
         get().clearChatMessages();
         // 重置语音状态为默认值
-        set({ 
-          micEnabled: false,  // 麦克风默认关闭
-          globalMuted: false, // 全局静音默认关闭
-          mutedPlayers: new Set<string>(), // 清空静音列表
-          speakingPlayers: new Set<string>(), // 清空说话状态
-          playerVolumes: new Map<string, number>(), // 清空玩家音量设置
-          hostId: null, // 重置房主
-          maxPlayers: null,
-          isPublicLobby: false,
-          hostMutedPlayers: new Set<string>(),
-        }, false, 'clearLobby/resetVoiceState');
-        set({ announcement: '', myVoiceGroup: 0, playerVoiceGroups: new Map<string, number>() }, false, 'clearLobby/resetAnnounce');
+        set(
+          {
+            micEnabled: false, // 麦克风默认关闭
+            globalMuted: false, // 全局静音默认关闭
+            mutedPlayers: new Set<string>(), // 清空静音列表
+            speakingPlayers: new Set<string>(), // 清空说话状态
+            playerVolumes: new Map<string, number>(), // 清空玩家音量设置
+            hostId: null, // 重置房主
+            maxPlayers: null,
+            isPublicLobby: false,
+            hostMutedPlayers: new Set<string>(),
+          },
+          false,
+          'clearLobby/resetVoiceState'
+        );
+        set(
+          { announcement: '', myVoiceGroup: 0, playerVoiceGroups: new Map<string, number>() },
+          false,
+          'clearLobby/resetAnnounce'
+        );
         set({ todos: [] }, false, 'clearLobby/resetTodos');
         console.log('✅ 语音状态已重置为默认值');
       },
@@ -386,9 +391,7 @@ export const useAppStore = create<AppStore>()(
       updatePlayerStatus: (playerId: string, status: Partial<Player>) => {
         set(
           (state) => ({
-            players: state.players.map((p) =>
-              p.id === playerId ? { ...p, ...status } : p
-            ),
+            players: state.players.map((p) => (p.id === playerId ? { ...p, ...status } : p)),
           }),
           false,
           'updatePlayerStatus'
@@ -409,11 +412,7 @@ export const useAppStore = create<AppStore>()(
 
       // ==================== 语音状态操作 ====================
       toggleMic: () => {
-        set(
-          (state) => ({ micEnabled: !state.micEnabled }),
-          false,
-          'toggleMic'
-        );
+        set((state) => ({ micEnabled: !state.micEnabled }), false, 'toggleMic');
       },
 
       setMicEnabled: (enabled: boolean) => {
@@ -425,13 +424,13 @@ export const useAppStore = create<AppStore>()(
           (state) => {
             const mutedPlayers = new Set(state.mutedPlayers);
             const willBeMuted = !mutedPlayers.has(playerId);
-            
+
             if (willBeMuted) {
               mutedPlayers.add(playerId);
             } else {
               mutedPlayers.delete(playerId);
             }
-            
+
             // 同步到 WebRTC 客户端
             try {
               if (willBeMuted) {
@@ -442,7 +441,7 @@ export const useAppStore = create<AppStore>()(
             } catch (error) {
               console.error('同步静音状态到WebRTC失败:', error);
             }
-            
+
             return { mutedPlayers };
           },
           false,
@@ -456,14 +455,14 @@ export const useAppStore = create<AppStore>()(
           (state) => {
             const mutedPlayers = new Set(state.mutedPlayers);
             mutedPlayers.add(playerId);
-            
+
             // 同步到 WebRTC 客户端
             try {
               webrtcClient.mutePlayer(playerId);
             } catch (error) {
               console.error('同步静音状态到WebRTC失败:', error);
             }
-            
+
             return { mutedPlayers };
           },
           false,
@@ -477,14 +476,14 @@ export const useAppStore = create<AppStore>()(
           (state) => {
             const mutedPlayers = new Set(state.mutedPlayers);
             mutedPlayers.delete(playerId);
-            
+
             // 同步到 WebRTC 客户端
             try {
               webrtcClient.unmutePlayer(playerId);
             } catch (error) {
               console.error('同步静音状态到WebRTC失败:', error);
             }
-            
+
             return { mutedPlayers };
           },
           false,
@@ -501,7 +500,7 @@ export const useAppStore = create<AppStore>()(
         set(
           (state) => {
             const newGlobalMuted = !state.globalMuted;
-            
+
             // 同步到 WebRTC 客户端
             try {
               if (newGlobalMuted) {
@@ -512,7 +511,7 @@ export const useAppStore = create<AppStore>()(
             } catch (error) {
               console.error('同步全局静音状态到WebRTC失败:', error);
             }
-            
+
             return { globalMuted: newGlobalMuted };
           },
           false,
@@ -532,7 +531,7 @@ export const useAppStore = create<AppStore>()(
         } catch (error) {
           console.error('同步全局静音状态到WebRTC失败:', error);
         }
-        
+
         set({ globalMuted: muted }, false, 'setGlobalMuted');
         get().applyVoiceGroupRouting();
       },
@@ -578,14 +577,14 @@ export const useAppStore = create<AppStore>()(
             const playerVolumes = new Map(state.playerVolumes);
             const clampedVolume = Math.max(0, Math.min(1, volume));
             playerVolumes.set(playerId, clampedVolume);
-            
+
             // 同步到 WebRTC 客户端
             try {
               webrtcClient.setPlayerVolume(playerId, clampedVolume);
             } catch (error) {
               console.error('同步玩家音量到WebRTC失败:', error);
             }
-            
+
             return { playerVolumes };
           },
           false,
@@ -610,19 +609,11 @@ export const useAppStore = create<AppStore>()(
       },
 
       setStatusWindowCollapsed: (collapsed: boolean) => {
-        set(
-          { statusWindowCollapsed: collapsed },
-          false,
-          'setStatusWindowCollapsed'
-        );
+        set({ statusWindowCollapsed: collapsed }, false, 'setStatusWindowCollapsed');
       },
 
       setStatusWindowPosition: (position: WindowPosition) => {
-        set(
-          { statusWindowPosition: position },
-          false,
-          'setStatusWindowPosition'
-        );
+        set({ statusWindowPosition: position }, false, 'setStatusWindowPosition');
       },
 
       setMainWindowVisible: (visible: boolean) => {
@@ -630,11 +621,7 @@ export const useAppStore = create<AppStore>()(
       },
 
       toggleMiniMode: () => {
-        set(
-          (state) => ({ miniMode: !state.miniMode }),
-          false,
-          'toggleMiniMode'
-        );
+        set((state) => ({ miniMode: !state.miniMode }), false, 'toggleMiniMode');
       },
 
       setMiniMode: (mini: boolean) => {
@@ -654,7 +641,9 @@ export const useAppStore = create<AppStore>()(
 
       deleteChatMessage: (messageId: string) => {
         set(
-          (state) => ({ chatMessages: state.chatMessages.filter((message) => message.id !== messageId) }),
+          (state) => ({
+            chatMessages: state.chatMessages.filter((message) => message.id !== messageId),
+          }),
           false,
           'deleteChatMessage'
         );
@@ -663,11 +652,7 @@ export const useAppStore = create<AppStore>()(
       recallChatMessage: (messageId: string, requesterId: string) => {
         const result = applyMessageRecall(get().chatMessages, messageId, requesterId);
         if (!result.changed) return false;
-        set(
-          { chatMessages: [...result.messages] },
-          false,
-          'recallChatMessage'
-        );
+        set({ chatMessages: [...result.messages] }, false, 'recallChatMessage');
         return true;
       },
 
@@ -686,21 +671,29 @@ export const useAppStore = create<AppStore>()(
       },
 
       setMyVoiceGroup: (group: number) => {
-        set((state) => {
-          const playerVoiceGroups = new Map(state.playerVoiceGroups);
-          const me = state.currentPlayerId;
-          if (me) playerVoiceGroups.set(me, group);
-          return { myVoiceGroup: group, playerVoiceGroups };
-        }, false, 'setMyVoiceGroup');
+        set(
+          (state) => {
+            const playerVoiceGroups = new Map(state.playerVoiceGroups);
+            const me = state.currentPlayerId;
+            if (me) playerVoiceGroups.set(me, group);
+            return { myVoiceGroup: group, playerVoiceGroups };
+          },
+          false,
+          'setMyVoiceGroup'
+        );
         get().applyVoiceGroupRouting();
       },
 
       setPlayerVoiceGroup: (playerId: string, group: number) => {
-        set((state) => {
-          const playerVoiceGroups = new Map(state.playerVoiceGroups);
-          playerVoiceGroups.set(playerId, group);
-          return { playerVoiceGroups };
-        }, false, 'setPlayerVoiceGroup');
+        set(
+          (state) => {
+            const playerVoiceGroups = new Map(state.playerVoiceGroups);
+            playerVoiceGroups.set(playerId, group);
+            return { playerVoiceGroups };
+          },
+          false,
+          'setPlayerVoiceGroup'
+        );
         get().applyVoiceGroupRouting();
       },
 
@@ -714,7 +707,11 @@ export const useAppStore = create<AppStore>()(
           const shouldHear = theirGroup === myGroup;
           const locallyMuted = st.globalMuted || st.mutedPlayers.has(p.id);
           const target = shouldHear && !locallyMuted ? (st.playerVolumes.get(p.id) ?? 1.0) : 0;
-          try { webrtcClient.setPlayerVolume(p.id, target); } catch { /* ignore */ }
+          try {
+            webrtcClient.setPlayerVolume(p.id, target);
+          } catch {
+            /* ignore */
+          }
         });
       },
 
@@ -723,7 +720,6 @@ export const useAppStore = create<AppStore>()(
       setTodos: (todos: TodoItem[]) => {
         set({ todos }, false, 'setTodos');
       },
-
 
       // ==================== 配置操作 ====================
       updateConfig: (config: Partial<UserConfig>) => {

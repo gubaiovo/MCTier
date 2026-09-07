@@ -5,10 +5,7 @@ interface CloseCircleIconProps {
   className?: string;
 }
 
-export const CloseCircleIcon: React.FC<CloseCircleIconProps> = ({ 
-  size = 24,
-  className = '' 
-}) => {
+export const CloseCircleIcon: React.FC<CloseCircleIconProps> = ({ size = 24, className = '' }) => {
   return (
     <svg
       width={size}
@@ -18,13 +15,7 @@ export const CloseCircleIcon: React.FC<CloseCircleIconProps> = ({
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        fill="currentColor"
-        opacity="0.2"
-      />
+      <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.2" />
       <path
         d="M15 9L9 15M9 9L15 15"
         stroke="currentColor"

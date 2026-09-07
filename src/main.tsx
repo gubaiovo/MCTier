@@ -11,7 +11,9 @@ initializeStore();
 try {
   localStorage.removeItem('mctier_theme_primary');
   document.documentElement.style.removeProperty('--mctier-primary');
-} catch { /* ignore */ }
+} catch {
+  /* ignore */
+}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

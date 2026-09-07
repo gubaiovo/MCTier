@@ -145,6 +145,7 @@ class EasyTierVpnService : VpnService() {
         if (result != 0) {
             error(EasyTierJNI.getLastError() ?: "setTunFd failed")
         }
+        Log.i(TAG, "TUN fd attached to EasyTier instance=$instanceName fd=$fd")
 
         running = true
         while (running && vpnInterface != null) {

@@ -3,11 +3,12 @@ package top.pmh13.mctier.network
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -37,8 +38,17 @@ class SignalingClient {
     @Volatile private var stableJob: Job? = null
     @Volatile private var heartbeatJob: Job? = null
 
-    private val _events = MutableSharedFlow<SignalingEnvelope>(extraBufferCapacity = 64)
-    val events: SharedFlow<SignalingEnvelope> = _events
+    // 信令消息是单消费者事件流，不是可丢弃的广播状态。MutableSharedFlow(replay=0)
+    // 在收集器尚未订阅时会静默丢弃消息；Channel 会保留启动阶段快速到达的首批名册。
+    private val eventChannel = Channel<SignalingEnvelope>(capacity = Channel.BUFFERED)
+    val events: Flow<SignalingEnvelope> = eventChannel.receiveAsFlow()
+
+    // 首次连接失败必须反馈给 UI；否则 EasyTier 已成功时会表现为“已在大厅但永远只有自己”。
+    // 同一 connectionGeneration 只上报一次，避免自动重连期间反复弹出相同错误。
+    private val connectionFailureChannel = Channel<String>(capacity = Channel.BUFFERED)
+    val connectionFailures: Flow<String> = connectionFailureChannel.receiveAsFlow()
+    @Volatile private var openedGeneration = -1L
+    @Volatile private var reportedFailureGeneration = -1L
 
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected
@@ -110,6 +120,7 @@ class SignalingClient {
         val ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 if (ws !== webSocket || generation != connectionGeneration) return
+                openedGeneration = generation
                 // WebSocket open is only a transport state. The repository must
                 // not send lobby traffic until the challenge/register handshake
                 // has completed and register-success has been validated.
@@ -136,14 +147,14 @@ class SignalingClient {
                             // 连接稳定 6 秒后才认为重连成功并清零退避；6 秒内被关闭则继续指数退避
                             stableJob?.cancel()
                             stableJob = scope.launch { delay(6000); if (ws === webSocket) reconnectAttempts = 0 }
-                            _events.tryEmit(message)
+                            eventChannel.trySend(message)
                         }
                         else -> {
                             // A top-level sessionGeneration on player-joined identifies
                             // the joining peer, not this WebSocket. Per-peer generation
                             // checks are applied by the repository when roster events
                             // are merged; never compare another peer's generation to ours.
-                            _events.tryEmit(message)
+                            eventChannel.trySend(message)
                         }
                     }
                 }
@@ -171,6 +182,12 @@ class SignalingClient {
                 registrationSent = false
                 _connected.value = false
                 android.util.Log.e("SignalingClient", "WS onFailure: ${t.message} resp=${response?.code}")
+                if (openedGeneration != generation && reportedFailureGeneration != generation) {
+                    reportedFailureGeneration = generation
+                    connectionFailureChannel.trySend(
+                        t.message?.takeIf { it.isNotBlank() } ?: "WebSocket connection failed",
+                    )
+                }
                 scheduleReconnect(args, generation)
             }
         })

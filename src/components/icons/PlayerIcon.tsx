@@ -27,13 +27,7 @@ export const PlayerIcon: React.FC<PlayerIconProps> = ({
       className={className}
     >
       {/* 玩家头像 */}
-      <circle
-        cx="12"
-        cy="8"
-        r="4"
-        fill="currentColor"
-        opacity={online ? 1 : 0.4}
-      />
+      <circle cx="12" cy="8" r="4" fill="currentColor" opacity={online ? 1 : 0.4} />
       <path
         d="M12 14C8.13 14 5 16.13 5 18.75V20H19V18.75C19 16.13 15.87 14 12 14Z"
         fill="currentColor"
@@ -41,14 +35,7 @@ export const PlayerIcon: React.FC<PlayerIconProps> = ({
       />
       {/* 在线状态指示器 */}
       {online && (
-        <circle
-          cx="18"
-          cy="18"
-          r="3"
-          fill="#52c41a"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
+        <circle cx="18" cy="18" r="3" fill="#52c41a" stroke="currentColor" strokeWidth="1.5" />
       )}
     </svg>
   );

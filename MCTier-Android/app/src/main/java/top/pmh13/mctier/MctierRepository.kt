@@ -277,6 +277,21 @@ class MctierRepository(private val context: Context) {
     init {
         clearAvatarCacheOnStartup()
         scope.launch { signalingClient.events.collect { handleSignal(it) } }
+        scope.launch {
+            signalingClient.connectionFailures.collect { detail ->
+                if (_state.value.state == AppConnectionState.InLobby) {
+                    _state.update {
+                        it.copy(
+                            error = L(
+                                "信令服务器连接失败：$detail",
+                                "Signaling server connection failed: $detail",
+                            ),
+                            reconnecting = true,
+                        )
+                    }
+                }
+            }
+        }
         // 应用已保存的音效/免打扰设置
         soundManager.applySettings(_state.value.settings)
         // 应用弹幕配置
@@ -331,7 +346,7 @@ class MctierRepository(private val context: Context) {
                 // 顶部"重连中"提示：在大厅内且信令断开时显示
                 reconnectNoticeJob?.cancel()
                 if (connected) {
-                    _state.update { it.copy(reconnecting = false) }
+                    _state.update { it.copy(error = null, reconnecting = false) }
                 } else if (_state.value.state == AppConnectionState.InLobby) {
                     invalidatePendingRemoteControlAccept()
                     remoteControlController?.handleSignalingDisconnected()
@@ -623,22 +638,11 @@ class MctierRepository(private val context: Context) {
                     rejectChatProtocol(L("无法生成聊天签名密钥", "Unable to generate chat signing key"))
                     return@launch
                 }
-                val activeSigner = chatClient?.signingSigner() ?: return@runCatching
-                if (!isCurrentLobbyGeneration(generation)) return@runCatching
-                serverSessionGeneration = null
-                signalingClient.connect(
-                    ConnectArgs(
-                        url = lobby.signalingServer,
-                        identityId = identityId,
-                        playerName = settings.playerName,
-                        lobbyName = lobby.name,
-                        lobbyPassword = lobby.password,
-                        virtualIp = lobby.virtualIp,
-                        signer = activeSigner,
-                        useDomain = lobby.useDomain,
-                    ),
-                )
-                if (!isCurrentLobbyGeneration(generation)) return@runCatching
+
+                // 必须先提交本地大厅状态，再打开 WebSocket。服务端通常会在注册后立即回发
+                // players-list；若 connect() 在前，回包线程可能先合并远端成员，随后这里的
+                // players = listOf(self) 又把他们全部覆盖，表现为虚拟 IP 可互通但成员列表为空。
+                // connected 监听同样依赖 InLobby 状态，因此顺序也会影响首次注册后的同步。
                 _state.update {
                     it.copy(
                         playerId = identityId,
@@ -655,6 +659,21 @@ class MctierRepository(private val context: Context) {
                         ),
                     )
                 }
+                val activeSigner = chatClient?.signingSigner() ?: return@runCatching
+                if (!isCurrentLobbyGeneration(generation)) return@runCatching
+                serverSessionGeneration = null
+                signalingClient.connect(
+                    ConnectArgs(
+                        url = lobby.signalingServer,
+                        identityId = identityId,
+                        playerName = settings.playerName,
+                        lobbyName = lobby.name,
+                        lobbyPassword = lobby.password,
+                        virtualIp = lobby.virtualIp,
+                        useDomain = lobby.useDomain,
+                        signer = activeSigner,
+                    ),
+                )
                 recordRecentLobby(lobby.name, lobby.password, effectiveNode, effectiveSignaling)
                 statsStartSession()
             }.onFailure { e ->
@@ -1640,6 +1659,19 @@ class MctierRepository(private val context: Context) {
                 refreshRemoteSharesByHttp()
                 signalingClient.send(SignalingEnvelope(type = "screen-share-list-request", from = _state.value.playerId))
             }
+            "register-error" -> {
+                val detail = (message.message ?: message.error ?: message.reason)?.takeIf { it.isNotBlank() }
+                    ?: L("大厅名称或密码不匹配", "The lobby name or password does not match")
+                // 与桌面端一致：WebSocket 打开不代表注册成功。服务端拒绝后
+                // 退出 EasyTier 网络，避免停留在一个看似成功的空大厅。
+                leaveLobby()
+                _state.update {
+                    it.copy(
+                        state = AppConnectionState.Error,
+                        error = L("加入大厅同步失败：$detail", "Lobby synchronization failed: $detail"),
+                    )
+                }
+            }
             "chat-token-rotated" -> {
                 val lobbyId = message.lobbyId
                 val token = message.chatToken
@@ -1669,7 +1701,8 @@ class MctierRepository(private val context: Context) {
             }
             "players-list" -> {
                 val selfId = _state.value.playerId
-                val selfIp = _state.value.lobby?.virtualIp
+                // 信令 playerId 是成员身份的唯一依据。虚拟 IP 在 TUN/DHCP
+                // 收敛前可能为空或暂时重复，不能用于把真实成员从列表中过滤掉。
                 val remotes = message.players.orEmpty().map {
                     Player(
                         it.playerId,
@@ -1680,10 +1713,7 @@ class MctierRepository(private val context: Context) {
                         chatPublicKey = it.chatPublicKey,
                         sessionGeneration = it.sessionGeneration?.takeIf { generation -> generation > 0L },
                     )
-                }.filter { player ->
-                    player.id != selfId && player.sessionGeneration != null &&
-                        (selfIp.isNullOrBlank() || player.virtualIp.isNullOrBlank() || player.virtualIp != selfIp)
-                }
+                }.filter { player -> player.id != selfId && player.sessionGeneration != null }
                 playersSnapshotVersion += 1
                 remotes.forEach { pendingPlayerLeaveJobs.remove(it.id)?.cancel() }
                 // 【幽灵玩家清理】players-list 是服务器在持有大厅读锁时构建的权威全量列表（不含自己），
@@ -1724,8 +1754,7 @@ class MctierRepository(private val context: Context) {
             }
             "player-joined" -> {
                 val id = message.playerId ?: return
-                val selfIp = _state.value.lobby?.virtualIp
-                if (id == _state.value.playerId || (!selfIp.isNullOrBlank() && message.virtualIp == selfIp)) return
+                if (id == _state.value.playerId) return
                 val incomingGeneration = message.sessionGeneration?.takeIf { it > 0L } ?: return
                 val existing = _state.value.players.firstOrNull { it.id == id }
                 if (existing?.sessionGeneration?.let { incomingGeneration <= it } == true) return

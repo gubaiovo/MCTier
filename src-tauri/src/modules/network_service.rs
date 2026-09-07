@@ -1,4 +1,4 @@
-﻿use crate::modules::error::AppError;
+use crate::modules::error::AppError;
 use crate::modules::resource_manager::ResourceManager;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -9,53 +9,10 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
-#[cfg(windows)]
-use crate::modules::privileged_helper::{self, HelperEvent, HelperSession};
-
-/// 检查是否以管理员权限运行（仅 Windows）
-#[cfg(windows)]
-fn is_elevated() -> bool {
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Security::{
-        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
-    };
-    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-
-    unsafe {
-        let mut token: HANDLE = HANDLE::default();
-
-        // 打开当前进程的访问令牌
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
-            return false;
-        }
-
-        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
-        let mut return_length = 0u32;
-
-        // 获取令牌提升信息
-        let result = GetTokenInformation(
-            token,
-            TokenElevation,
-            Some(&mut elevation as *mut _ as *mut _),
-            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
-            &mut return_length,
-        );
-
-        result.is_ok() && elevation.TokenIsElevated != 0
-    }
-}
-
-/// 非 Windows 平台始终返回 true（不需要管理员权限）。
-///
-/// Linux 上应用本体确实不需要 root：创建 TUN 只要求 easytier-core 这个**文件**
-/// 具备 cap_net_admin，检查逻辑在 linux_platform::ensure_easytier_tun_capability，
-/// 由 start_easytier 在启动前调用。所以这里返回 true 不是绕过检查，而是检查点
-/// 换了位置；调用方全在 #[cfg(windows)] 内，故标注 allow(dead_code)。
-#[cfg(not(windows))]
-#[allow(dead_code)]
-fn is_elevated() -> bool {
-    true
-}
+#[cfg(all(windows, not(debug_assertions)))]
+use crate::modules::privileged_helper::HelperEvent;
+#[cfg(all(windows, not(debug_assertions)))]
+use crate::modules::privileged_helper::{self, HelperSession};
 
 /// 连接状态枚举
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -82,8 +39,13 @@ pub struct NetworkConfig {
 
 impl Default for NetworkConfig {
     fn default() -> Self {
+        #[cfg(target_os = "windows")]
+        let easytier_path = PathBuf::from("easytier-core.exe");
+        #[cfg(not(target_os = "windows"))]
+        let easytier_path = PathBuf::from("easytier-core");
+
         Self {
-            easytier_path: PathBuf::from("easytier-core.exe"),
+            easytier_path,
             config_dir: PathBuf::from("./config"),
         }
     }
@@ -96,7 +58,7 @@ pub struct NetworkService {
     /// EasyTier 子进程
     easytier_process: Arc<Mutex<Option<Child>>>,
     /// Windows 上由窄权限 helper 管理的 EasyTier 会话
-    #[cfg(windows)]
+    #[cfg(all(windows, not(debug_assertions)))]
     helper_session: Arc<Mutex<Option<HelperSession>>>,
     /// 网络配置
     config: NetworkConfig,
@@ -127,7 +89,7 @@ impl NetworkService {
     pub fn new(config: NetworkConfig) -> Self {
         Self {
             easytier_process: Arc::new(Mutex::new(None)),
-            #[cfg(windows)]
+            #[cfg(all(windows, not(debug_assertions)))]
             helper_session: Arc::new(Mutex::new(None)),
             config,
             status: Arc::new(Mutex::new(ConnectionStatus::Disconnected)),
@@ -164,6 +126,20 @@ impl NetworkService {
         } else {
             // 如果没有 app_handle，使用配置中的路径
             Ok(self.config.easytier_path.clone())
+        }
+    }
+
+    #[cfg(not(windows))]
+    async fn spawn_easytier_process(cmd: Command) -> Result<Child, AppError> {
+        #[cfg(target_os = "macos")]
+        {
+            crate::modules::macos_platform::spawn_tunnel(cmd).await
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let mut cmd = cmd;
+            cmd.spawn()
+                .map_err(|e| AppError::ProcessError(format!("启动 EasyTier 进程失败: {}", e)))
         }
     }
 
@@ -304,7 +280,19 @@ impl NetworkService {
             cmd.arg("--bind-device").arg("true");
             log::info!("  ✅ 绑定到物理设备");
         }
+        // macOS 的 utun 驱动只接受系统分配的 `utunN` 接口名。EasyTier
+        // 在 macOS 上会自动选择空闲接口，传入 Windows 风格的
+        // `MCTier_Net` 会直接导致 TUN 创建失败，因此始终让系统分配。
+        #[cfg(target_os = "macos")]
+        if config
+            .dev_name
+            .as_deref()
+            .is_some_and(|name| !name.is_empty())
+        {
+            log::info!("  ℹ️ macOS 忽略自定义 TUN 设备名称，使用系统分配的 utunN");
+        }
 
+        #[cfg(not(target_os = "macos"))]
         if let Some(ref dev_name) = config.dev_name {
             if !dev_name.is_empty() {
                 cmd.arg("--dev-name").arg(dev_name);
@@ -527,6 +515,8 @@ impl NetworkService {
     /// # 返回
     /// * `Ok(String)` - 成功启动，返回虚拟 IP 地址
     /// * `Err(AppError)` - 启动失败
+    // These arguments mirror the independent Tauri lobby configuration fields.
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_easytier_with_config(
         &self,
         network_name: String,
@@ -554,7 +544,7 @@ impl NetworkService {
 
         // Windows cleanup and resource materialization are performed by the
         // narrow elevated helper. Unix keeps the existing local cleanup path.
-        #[cfg(not(windows))]
+        #[cfg(target_os = "linux")]
         Self::cleanup_orphan_processes().await;
 
         // 清空上一次的 stderr 缓存
@@ -578,17 +568,26 @@ impl NetworkService {
         }
 
         // 获取 EasyTier 所在目录作为工作目录
+        #[cfg(not(target_os = "macos"))]
         let working_dir = easytier_path
             .parent()
             .ok_or_else(|| AppError::ProcessError("无法获取 EasyTier 所在目录".to_string()))?;
+        // A signed .app (or a mounted DMG) is not a writable configuration directory.
+        #[cfg(target_os = "macos")]
+        let macos_working_dir = ResourceManager::get_runtime_path(app_handle)?;
+        #[cfg(target_os = "macos")]
+        std::fs::create_dir_all(&macos_working_dir)
+            .map_err(|e| AppError::ConfigError(format!("创建 macOS 运行目录失败: {}", e)))?;
+        #[cfg(target_os = "macos")]
+        let working_dir = macos_working_dir.as_path();
 
         log::info!("设置工作目录: {:?}", working_dir);
 
         #[cfg(not(windows))]
         {
-            // working_dir 在非 Windows 分支没有其他用途，显式消费避免 unused 告警。
-            let _ = working_dir;
-            log::info!("Linux 平台：EasyTier 使用内核 TUN（/dev/net/tun），无需驱动文件");
+            log::info!(
+                "Unix 平台：EasyTier 使用系统 TUN（Linux 为 /dev/net/tun），无需 Windows 驱动文件"
+            );
         }
 
         // 生成唯一的实例名称（基于时间戳和随机数）
@@ -606,7 +605,7 @@ impl NetworkService {
         #[cfg(not(windows))]
         {
             log::info!("正在清理旧的配置目录...");
-            if let Ok(entries) = std::fs::read_dir(&working_dir) {
+            if let Ok(entries) = std::fs::read_dir(working_dir) {
                 for entry in entries.flatten() {
                     if let Ok(file_name) = entry.file_name().into_string() {
                         // 只清理以 config_mctier- 开头的目录
@@ -837,6 +836,9 @@ impl NetworkService {
 
         log::info!("使用 DHCP + TUN 模式，创建虚拟网卡以支持完整的网络功能");
         log::info!("虚拟IP由DHCP服务器自动分配");
+        #[cfg(target_os = "macos")]
+        log::info!("macOS 使用系统自动分配的 utunN 虚拟网卡名称");
+        #[cfg(not(target_os = "macos"))]
         log::info!("虚拟网卡名称: MCTier_Net（固定名称，方便识别和管理）");
         log::info!("使用单节点模式连接到: {}", server_node);
         log::info!("启用低延迟优先模式以降低延迟");
@@ -850,6 +852,7 @@ impl NetworkService {
             rpc_port
         );
 
+        #[cfg(all(windows, not(debug_assertions)))]
         let launch_args = cmd_args.clone();
 
         // Windows 生产模式：使用 privileged helper
@@ -880,11 +883,15 @@ impl NetworkService {
         #[cfg(all(windows, debug_assertions))]
         {
             log::info!("🔧 开发模式 - 直接启动 EasyTier 进程（不使用 privileged helper）");
-            
+            for filename in ["wintun.dll", "WinDivert64.sys"] {
+                ResourceManager::ensure_embedded_file_at(&working_dir.join(filename), filename)?;
+            }
+
             cmd.current_dir(working_dir)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .kill_on_drop(true);
+            cmd.creation_flags(0x08000000);
 
             let mut child = cmd.spawn().map_err(|e| {
                 log::error!("启动 EasyTier 进程失败: {}", e);
@@ -927,6 +934,12 @@ impl NetworkService {
                 Self::monitor_stderr(stderr, is_running_clone, status_clone2, stderr_buf_clone)
                     .await;
             });
+            let process = Arc::clone(&self.easytier_process);
+            let status = Arc::clone(&self.status);
+            let running = Arc::clone(&self.is_running);
+            let ip = Arc::clone(&self.virtual_ip);
+            let stderr = Arc::clone(&self.last_stderr);
+            tokio::spawn(Self::monitor_process(process, status, running, ip, stderr));
         }
 
         #[cfg(not(windows))]
@@ -934,13 +947,9 @@ impl NetworkService {
             cmd.current_dir(working_dir)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
-                .kill_on_drop(true)
-                .env("PATH", working_dir);
+                .kill_on_drop(true);
 
-            let mut child = cmd.spawn().map_err(|e| {
-                log::error!("启动 EasyTier 进程失败: {}", e);
-                AppError::ProcessError(format!("启动 EasyTier 进程失败: {}", e))
-            })?;
+            let mut child = Self::spawn_easytier_process(cmd).await?;
             let stdout = child
                 .stdout
                 .take()
@@ -1164,7 +1173,7 @@ impl NetworkService {
     /// 只匹配 `easytier-core` 这个精确名字（-x 全名匹配，不用 -f 匹配整条命令行），
     /// 避免命令行里恰好出现该字样的无关进程被误杀。pkill 无匹配时返回非 0，
     /// 与 Windows 的 taskkill 一致，不视为错误。
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     async fn cleanup_orphan_processes() {
         log::info!("🧹 [PreStart] 检查并清理可能残留的孤儿 easytier-core 进程...");
         let output = tokio::process::Command::new("pkill")
@@ -1189,6 +1198,23 @@ impl NetworkService {
         }
     }
 
+    /// 根据平台返回可执行的 TUN 故障处理建议。
+    fn virtual_nic_error_message() -> String {
+        #[cfg(windows)]
+        {
+            "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            "虚拟网卡创建失败：macOS 需要管理员授权来创建 utun 接口。请在系统密码对话框中授权，并确认未启用会独占 VPN 的网络过滤器；若仍失败，请重启 MCTier 后重试".to_string()
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            "虚拟网卡创建失败：请确认当前系统支持 TUN，并授予 MCTier 所需的网络权限后重试"
+                .to_string()
+        }
+    }
+
     /// 根据进程退出码推断常见失败原因，返回更可读的错误说明
     ///
     /// 主要覆盖 Windows 下的几个高频致命退出码。
@@ -1207,7 +1233,7 @@ impl NetworkService {
             .iter()
             .any(|l| l.contains("tun device error") || l.contains("Failed to create adapter"))
         {
-            return "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string();
+            return Self::virtual_nic_error_message();
         }
 
         // 端口绑定被拒绝（os error 10013 / WSAEACCES）——常见于二次使用时上一个
@@ -1284,7 +1310,14 @@ impl NetworkService {
         if let Some(hint) = stderr_hint {
             return format!("EasyTier 进程意外终止：{}", hint);
         }
-        "EasyTier 进程意外终止：可能被安全软件拦截、虚拟网卡创建失败或缺少运行库，请尝试以管理员身份运行并将本软件加入杀毒软件白名单".to_string()
+        #[cfg(target_os = "macos")]
+        {
+            "EasyTier 进程意外终止：可能是 macOS 管理员授权被取消、虚拟网卡创建失败或网络过滤器拦截，请重新连接并在提示中授权".to_string()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            "EasyTier 进程意外终止：可能被安全软件拦截、虚拟网卡创建失败或缺少运行库，请尝试以管理员身份运行并将本软件加入安全软件白名单".to_string()
+        }
     }
 
     fn redact_sensitive_line(line: &str) -> String {
@@ -1301,7 +1334,7 @@ impl NetworkService {
         line.to_string()
     }
 
-    #[cfg(windows)]
+    #[cfg(all(windows, not(debug_assertions)))]
     async fn monitor_helper(
         reader: tokio::net::tcp::OwnedReadHalf,
         virtual_ip: Arc<Mutex<Option<String>>>,
@@ -1370,7 +1403,7 @@ impl NetworkService {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(all(windows, not(debug_assertions)))]
     async fn handle_helper_output(
         line: &str,
         is_stderr: bool,
@@ -1480,9 +1513,7 @@ impl NetworkService {
             if line.contains("tun device error") || line.contains("Failed to create adapter") {
                 log::error!("检测到虚拟网卡创建失败: {}", line);
                 *is_running.lock().await = false;
-                *status.lock().await = ConnectionStatus::Error(
-                    "虚拟网卡创建失败：请右键以管理员身份运行 MCTier，并将本软件加入杀毒软件/防火墙白名单；若仍失败，请重启电脑后重试".to_string(),
-                );
+                *status.lock().await = ConnectionStatus::Error(Self::virtual_nic_error_message());
                 continue;
             }
 
@@ -1512,7 +1543,7 @@ impl NetworkService {
             let line_lower = line.to_lowercase();
 
             // 检查是否包含虚拟IP相关的关键词
-            let _is_virtual_ip_line = line_lower.contains("virtual ip")
+            let is_virtual_ip_line = line_lower.contains("virtual ip")
                 || line_lower.contains("assigned ip")
                 || line_lower.contains("dhcp")
                 || line_lower.contains("got ip")
@@ -1527,26 +1558,20 @@ impl NetworkService {
                 || line.contains("ipv4 = \"")  // 配置行
                 || line.contains("listeners")
                 || line.contains("rpc_portal =");
-
-            if !is_excluded {
+            // EasyTier also logs listener, peer and physical-interface addresses.
+            // Accepting any private IPv4 from those lines can register a macOS
+            // client with a LAN/peer address and then corrupt member routing.
+            if is_virtual_ip_line && !is_excluded {
                 if let Some(ip) = Self::extract_ip_from_line(&line) {
-                    // 排除网络地址（最后一位是0）和广播地址（最后一位是255）
-                    let parts: Vec<&str> = ip.split('.').collect();
-                    if parts.len() == 4 {
-                        if let Ok(last_octet) = parts[3].parse::<u8>() {
-                            // 只接受 1-254 的主机地址
-                            if last_octet >= 1 && last_octet <= 254 {
-                                log::info!("✅ 从输出中提取到有效的虚拟 IP: {}", ip);
-                                *virtual_ip.lock().await = Some(ip.clone());
-                                *status.lock().await = ConnectionStatus::Connected(ip);
-                            } else {
-                                log::debug!(
-                                    "跳过无效的主机地址: {} (最后一位: {})",
-                                    ip,
-                                    last_octet
-                                );
-                            }
-                        }
+                    // 信令服务器只接受 10.126.126.1-254 的裸 IPv4。EasyTier
+                    // 输出中还可能出现物理网卡、监听器或对端的私网地址，尤其是
+                    // macOS utun 日志；这些地址不能被注册成 MCTier 虚拟 IP。
+                    if Self::is_mctier_virtual_ip(&ip) {
+                        log::info!("✅ 从输出中提取到有效的虚拟 IP: {}", ip);
+                        *virtual_ip.lock().await = Some(ip.clone());
+                        *status.lock().await = ConnectionStatus::Connected(ip);
+                    } else {
+                        log::debug!("跳过非 MCTier 虚拟网段地址: {}", ip);
                     }
                 }
             }
@@ -1584,11 +1609,12 @@ impl NetworkService {
 
                 // 检查是否是 TUN 设备创建失败
                 if line.contains("tun device error") || line.contains("Failed to create adapter") {
-                    log::error!("TUN 设备创建失败，可能是缺少 WinTun 驱动或权限不足");
-                    *is_running.lock().await = false;
-                    *status.lock().await = ConnectionStatus::Error(
-                        "虚拟网卡创建失败：请以管理员身份运行，并确认 WinTun 驱动正常、未被安全软件拦截".to_string()
+                    log::error!(
+                        "TUN 设备创建失败，可能是缺少平台驱动、权限不足或被系统网络过滤器拦截"
                     );
+                    *is_running.lock().await = false;
+                    *status.lock().await =
+                        ConnectionStatus::Error(Self::virtual_nic_error_message());
                 }
             }
         }
@@ -1683,6 +1709,17 @@ impl NetworkService {
         None
     }
 
+    /// 信令服务器允许注册的 MCTier 虚拟 IPv4 地址。
+    ///
+    /// 必须使用裸 IPv4，并位于 10.126.126.1-254；网络地址和广播地址均拒绝。
+    pub fn is_mctier_virtual_ip(ip: &str) -> bool {
+        let Ok(address) = ip.parse::<std::net::Ipv4Addr>() else {
+            return false;
+        };
+        let octets = address.octets();
+        octets[0..3] == [10, 126, 126] && (1..=254).contains(&octets[3])
+    }
+
     /// 检查是否为本地回环地址
     ///
     /// 本地回环地址范围：127.0.0.0/8 (127.0.0.0 - 127.255.255.255)
@@ -1755,7 +1792,18 @@ impl NetworkService {
         log::info!("🛑 [StopEasyTier] 开始停止 EasyTier 服务...");
         log::info!("========================================");
 
-        #[cfg(windows)]
+        #[cfg(all(windows, debug_assertions))]
+        let graceful_shutdown_success = {
+            if let Some(mut child) = self.easytier_process.lock().await.take() {
+                child
+                    .kill()
+                    .await
+                    .map_err(|e| AppError::ProcessError(e.to_string()))?;
+            }
+            true
+        };
+
+        #[cfg(all(windows, not(debug_assertions)))]
         let graceful_shutdown_success = {
             if !*self.is_running.lock().await && self.helper_session.lock().await.is_none() {
                 log::info!("ℹ️ [StopEasyTier] EasyTier 服务未运行，无需关闭");
@@ -1781,6 +1829,9 @@ impl NetworkService {
 
             if let Some(mut child) = process_guard.take() {
                 log::info!("🔄 [StopEasyTier] 正在优雅关闭 EasyTier 进程...");
+                #[cfg(target_os = "macos")]
+                crate::modules::macos_platform::stop_tunnel().await;
+                #[cfg(not(target_os = "macos"))]
                 match child.kill().await {
                     Ok(_) => {
                         log::info!("✅ [StopEasyTier] 已发送终止信号到 EasyTier 进程");
@@ -1791,7 +1842,7 @@ impl NetworkService {
                 }
 
                 log::info!("⏳ [StopEasyTier] 等待进程自然退出（最多3秒）...");
-                match tokio::time::timeout(Duration::from_secs(3), child.wait()).await {
+                match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
                     Ok(Ok(status)) => {
                         log::info!(
                             "✅ [StopEasyTier] EasyTier 进程已退出，状态码: {:?}",
@@ -1817,7 +1868,7 @@ impl NetworkService {
             log::warn!("⚠️ [StopEasyTier] 优雅关闭失败，现在尝试强制终止（taskkill /F）...");
             log::warn!("💡 [StopEasyTier] 这是最后的手段，仅在优雅关闭失败时使用");
 
-            #[cfg(not(windows))]
+            #[cfg(target_os = "linux")]
             {
                 let _ = tokio::process::Command::new("pkill")
                     .args(["-9", "-x", "easytier-core"])
@@ -2011,6 +2062,18 @@ mod tests {
     }
 
     #[test]
+    fn test_mctier_virtual_ip_matches_signaling_contract() {
+        assert!(NetworkService::is_mctier_virtual_ip("10.126.126.1"));
+        assert!(NetworkService::is_mctier_virtual_ip("10.126.126.254"));
+
+        assert!(!NetworkService::is_mctier_virtual_ip("10.126.126.0"));
+        assert!(!NetworkService::is_mctier_virtual_ip("10.126.126.255"));
+        assert!(!NetworkService::is_mctier_virtual_ip("10.144.144.1"));
+        assert!(!NetworkService::is_mctier_virtual_ip("192.168.1.10"));
+        assert!(!NetworkService::is_mctier_virtual_ip("10.126.126.10/24"));
+    }
+
+    #[test]
     fn test_is_valid_ip() {
         assert!(NetworkService::is_valid_ip("10.144.144.1"));
         assert!(NetworkService::is_valid_ip("192.168.1.1"));
@@ -2045,15 +2108,20 @@ mod tests {
     #[test]
     fn test_default_network_config() {
         let config = NetworkConfig::default();
+        #[cfg(target_os = "windows")]
         assert_eq!(config.easytier_path, PathBuf::from("easytier-core.exe"));
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(config.easytier_path, PathBuf::from("easytier-core"));
         assert_eq!(config.config_dir, PathBuf::from("./config"));
     }
 
     #[test]
     fn test_bind_device_argument_includes_required_boolean_value() {
-        let mut config = crate::modules::config_manager::EasyTierAdvancedConfig::default();
-        config.bind_device = true;
-        config.dev_name = Some("MCTier_Net".to_string());
+        let config = crate::modules::config_manager::EasyTierAdvancedConfig {
+            bind_device: true,
+            dev_name: Some("MCTier_Net".to_string()),
+            ..Default::default()
+        };
 
         let mut command = Command::new("easytier-core.exe");
         NetworkService::apply_advanced_config(&mut command, &config);
@@ -2072,14 +2140,19 @@ mod tests {
             Some("true")
         );
 
-        let dev_name_index = args
-            .iter()
-            .position(|arg| arg == "--dev-name")
-            .expect("dev-name argument should be present");
-        assert_eq!(
-            args.get(dev_name_index + 1).map(String::as_str),
-            Some("MCTier_Net")
-        );
+        #[cfg(target_os = "macos")]
+        assert!(!args.iter().any(|arg| arg == "--dev-name"));
+        #[cfg(not(target_os = "macos"))]
+        {
+            let dev_name_index = args
+                .iter()
+                .position(|arg| arg == "--dev-name")
+                .expect("dev-name argument should be present");
+            assert_eq!(
+                args.get(dev_name_index + 1).map(String::as_str),
+                Some("MCTier_Net")
+            );
+        }
     }
 
     // ========== 创建大厅流程 - EasyTier 启动测试 ==========

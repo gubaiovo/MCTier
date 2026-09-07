@@ -54,19 +54,31 @@ class GameHudService {
 
   async setOpacity(v: number): Promise<void> {
     this.opacity = clampOpacity(v);
-    try { localStorage.setItem(LS_OPACITY, String(this.opacity)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(LS_OPACITY, String(this.opacity));
+    } catch {
+      /* ignore */
+    }
     await this.emitConfig();
   }
 
   async setScale(v: number): Promise<void> {
     this.scale = clampScale(v);
-    try { localStorage.setItem(LS_SCALE, String(this.scale)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(LS_SCALE, String(this.scale));
+    } catch {
+      /* ignore */
+    }
     await this.emitConfig();
   }
 
   /** 实时通知 HUD 浮层窗口应用新的透明度/尺寸 */
   private async emitConfig(): Promise<void> {
-    try { await emitTo('gamehud', 'hud-config', { opacity: this.opacity, scale: this.scale }); } catch { /* HUD 窗口未开时忽略 */ }
+    try {
+      await emitTo('gamehud', 'hud-config', { opacity: this.opacity, scale: this.scale });
+    } catch {
+      /* HUD 窗口未开时忽略 */
+    }
   }
 }
 

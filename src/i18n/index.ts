@@ -53,7 +53,11 @@ export function setLanguagePreference(preference: LanguagePreference): void {
   const lang = resolveLanguagePreference(preference);
   applyLanguageLocal(lang);
   // 通知其它窗口（弹幕/HUD 等独立窗口）同步语言
-  void import('@tauri-apps/api/event').then(({ emit }) => { void emit('mctier-lang-changed', lang); }).catch(() => {});
+  void import('@tauri-apps/api/event')
+    .then(({ emit }) => {
+      void emit('mctier-lang-changed', lang);
+    })
+    .catch(() => {});
 }
 
 export function getLanguagePreference(): LanguagePreference {
@@ -61,7 +65,7 @@ export function getLanguagePreference(): LanguagePreference {
 }
 
 export function getLanguage(): 'zh' | 'en' {
-  return (i18n.language === 'en' ? 'en' : 'zh');
+  return i18n.language === 'en' ? 'en' : 'zh';
 }
 
 /**

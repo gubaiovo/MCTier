@@ -24,8 +24,10 @@ export const buildLobbyInviteLink = (invite: LobbyInvite): string => {
   });
   const serverNode = cleanOptional(invite.serverNode);
   const signalingServer = cleanOptional(invite.signalingServer);
-  if (serverNode && isSafeServerNode(serverNode) && serverNode !== 'custom') params.set('node', serverNode);
-  if (signalingServer && isSafeSignalingServer(signalingServer)) params.set('signal', signalingServer);
+  if (serverNode && isSafeServerNode(serverNode) && serverNode !== 'custom')
+    params.set('node', serverNode);
+  if (signalingServer && isSafeSignalingServer(signalingServer))
+    params.set('signal', signalingServer);
   return `mctier://join?${params.toString()}`;
 };
 
@@ -55,7 +57,9 @@ export const parseLobbyInviteLink = (raw: string): LobbyInvite | null => {
 const extractField = (text: string, labels: string[], allowEmpty = false): string | undefined => {
   const escapedLabels = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const valuePattern = allowEmpty ? '([^\\r\\n]*)' : '([^\\r\\n]+)';
-  const match = text.match(new RegExp(`(?:${escapedLabels.join('|')})\\s*[:：]\\s*${valuePattern}`, 'i'));
+  const match = text.match(
+    new RegExp(`(?:${escapedLabels.join('|')})\\s*[:：]\\s*${valuePattern}`, 'i')
+  );
   return match ? match[1].trim() : undefined;
 };
 
@@ -95,7 +99,8 @@ export const formatLobbyInviteText = (invite: LobbyInvite, language: 'zh' | 'en'
   const serverNode = cleanOptional(invite.serverNode);
   const signalingServer = cleanOptional(invite.signalingServer);
   const safeServerNode = serverNode && isSafeServerNode(serverNode) ? serverNode : undefined;
-  const safeSignalingServer = signalingServer && isSafeSignalingServer(signalingServer) ? signalingServer : undefined;
+  const safeSignalingServer =
+    signalingServer && isSafeSignalingServer(signalingServer) ? signalingServer : undefined;
   const name = sanitizeUntrustedText(invite.name, 64);
   const password = sanitizeUntrustedText(invite.password, 128);
   if (language === 'en') {
